@@ -1,0 +1,26 @@
+ethereum_rpc = "https://rpc.hoodi.ethpandaops.io/"
+drosera_rpc = "https://relay.hoodi.drosera.io"
+eth_chain_id = 560048
+drosera_address = "0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D"
+
+[traps]
+[traps.bridge_router_guard]
+path = "out/BridgeRouterGuardTrap.sol/BridgeRouterGuardTrap.json"
+response_contract = "0x1Ec29Ad65831CB73929CB75949a7EC9E15a1E60e"
+response_function = "snapFreeze(uint256,uint256,bool)"
+cooldown_period_blocks = 33
+min_number_of_operators = 1
+max_number_of_operators = 3
+block_sample_size = 3
+private_trap = true
+whitelist = ["0xcf75bea7a11eb0a764dc85def2f36c3ed826ae59"]
+address = "0x1D880D83Ce107C6961495Ef767b8E4099A94F72E"
+
+[traps.bridge_router_guard.alert]
+title = "Bridge Compromise Detected"
+severity = "critical"
+enabled = true
+labels = { "component" = "router-guard", "description" = "Velocity anomaly or spoofed payload detected" }
+alert_output_sig = "decodeAlertOutput"
+users = [ { address = "0xcf75bea7a11eb0a764dc85def2f36c3ed826ae59" } ]
+slack = { slack_channel = "#general" }
