@@ -90,22 +90,7 @@ A Multichain-pattern attack was simulated on Hoodi Testnet — 1,500 ETH drained
 
 Attack at block `2617548`. Containment at block `2617549`. **One block. ~12 seconds.**
 
-### Operator Log (Unedited)
-
-```text
-INFO  enzyme::runner: ShouldRespond='true'
-      trap_address=0x1D880D83Ce107C6961495Ef767b8E4099A94F72E
-      block_number=2617549
-
-INFO  submission::runner: Successfully submitted claim:
-      TransactionHash 0x6d96fcbcfca40a72905970889ab4f0b028c4077346b168edd66626df403044e1
-
-INFO  submission::runner: Setting cooldown block to 2617548
-```
-
----
-
-## The Circuit Breaker Argument
+### The Circuit Breaker Argument
 
 > *If the attacker drained 1,500 ETH, doesn't that mean the exploit was successful?*
 
@@ -117,7 +102,9 @@ By the time `snapFreeze` fires at block `2617549`, the cross-chain messages are 
 
 This is the detection signal that saves everything else.
 
-### Local Test Suite
+---
+
+## Local Test Suite
 
 ```bash
 forge test -vv
