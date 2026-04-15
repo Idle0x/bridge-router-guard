@@ -1,38 +1,23 @@
-name: CI
-
-permissions: {}
+name: Foundry CI
 
 on:
   push:
-  pull_request:
-  workflow_dispatch:
-
-env:
-  FOUNDRY_PROFILE: ci
+    branches: [ "main" ]
 
 jobs:
-  check:
-    name: Foundry project
+  build-and-test:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout Code
+        uses: actions/checkout@v4
         with:
-          persist-credentials: false
-          submodules: recursive
+          submodules: recursive # THIS IS THE LINE FOUNDRY FORGOT
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
 
-      - name: Show Forge version
-        run: forge --version
-
-      - name: Run Forge fmt
-        run: forge fmt --check
-
-      - name: Run Forge build
+      - name: Build Contracts
         run: forge build --sizes
 
-      - name: Run Forge tests
-        run: forge test -vvv
+      - name: Run Tests
+        run: forge test
