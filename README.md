@@ -188,4 +188,44 @@ The mock contracts in this PoC deliberately replicate the structural vulnerabili
 
 ---
 
+---
+
+## Repository Structure & Core Components
+
+```text
+bridge-router-guard/
+├── src/                                  # Production defense contracts
+│   ├── BridgeRouterGuardTrap.sol         # The core velocity-tracking state machine
+│   ├── BridgeRouterGuardResponse.sol     # The execution contract for `snapFreeze` containment
+│   ├── TestableBridgeRouterGuardTrap.sol # CI/CD shadow contract allowing constructor injection
+│   └── mocks/                            # Protocol simulation infrastructure
+│       ├── MockBridgeVault.sol
+│       ├── MockTokenGateway.sol
+│       └── MockBridgeRouter.sol
+├── test/                                 # Mathematical proofs and isolation tests
+│   ├── VaultDrain.t.sol                  # Validates math for the chunked withdrawal attack vector
+│   ├── PhantomMint.t.sol                 # Validates invariant checks for privilege escalation
+│   ├── RouterSpoof.t.sol                 # Validates instantaneous detection of skipped validation
+│   ├── ResponseAuth.t.sol                # Verifies RBAC so only Drosera Operators can pause
+│   ├── attack/                           # Exploit simulation scripts and live network proofs
+│   │   └── LiveHoodiExploit.s.sol
+│   └── utils/
+│       └── BridgeTestBase.t.sol
+├── script/                               # Deployment configuration
+│   ├── DeployMocks.sol
+│   └── DeployResponse.sol
+├── lib/                                  # Standard Foundry dependencies (forge-std, drosera-contracts)
+├── drosera.toml                          # Mesh configuration, block sampling, and Operator thresholds
+└── alertserver.js                        # Node.js webhook listener parsing on-chain telemetry to Web2
+```
+
+### Component Deep Dive
+
+* **`src/` & `mocks/` (The Defense Mesh):** Contains the core active defense logic. The Trap processes historical arrays to calculate capital flight velocity, while the Response holds the operator logic to instantly freeze infrastructure. The `mocks/` directory simulates a standard, vulnerable cross-chain protocol (Vault, Gateway, Router) to safely validate containment against live vectors.
+* **`test/` (The Proofs):** Divided into two layers. The core `.t.sol` files are isolated unit tests confirming strict mathematical boundaries (ensuring zero false positives). The `attack/` subdirectory contains full execution scripts that perfectly mirror the Multichain, CrossCurve, and Hyperbridge exploits.
+* **`drosera.toml`:** The operational config file. It dictates the shadow nodes' rules of engagement, defining block sampling bounds, cooldown periods, and the required response function signatures.
+* **`alertserver.js`:** The Web2 telemetry bridge. Catches off-chain Trap events and routes the decoded JSON payload (Vault Velocity, Phantom Mint Spikes, Router Spoofs) directly to institutional Slack or Discord channels.
+
+---
+
 *Deployed on Hoodi Testnet. All transactions verifiable on-chain.*
