@@ -1,0 +1,35 @@
+  
+```text  
+bridge-router-guard/  
+├── src/  
+│   ├── BridgeRouterGuardTrap.sol          # Stateless sensor: collect() + shouldRespond() + shouldAlert()  
+│   ├── BridgeRouterGuardResponse.sol      # Circuit breaker: snapFreeze() with try/catch + two-step ownership  
+│   ├── TestableBridgeRouterGuardTrap.sol  # CI shadow: inherits all logic, overrides collect() for injection  
+│   └── mocks/  
+│       ├── MockBridgeVault.sol            # Vector 1: unmatched withdrawal model (Multichain/Orbit)  
+│       ├── MockTokenGateway.sol           # Vector 2: unverified admin + unbacked mint model (IoTeX/Hyperbridge)  
+│       └── MockBridgeRouter.sol           # Vector 3: unvalidated payload execution model (CrossCurve/Socket)  
+├── test/  
+│   ├── VaultDrain.t.sol                   # Unit: velocity threshold fires on drain spike  
+│   ├── PhantomMint.t.sol                  # Unit: delta detection fires on unbacked mint  
+│   ├── RouterSpoof.t.sol                  # Unit: boolean invariant fires immediately on spoof  
+│   ├── ResponseAuth.t.sol                 # Auth: operator/owner access control + cooldown boundary  
+│   ├── AdversarialAttack.t.sol            # Adversarial: threshold gaming, chunked bursts, cold start, counter reset  
+│   ├── FuzzAndEdgeCases.t.sol             # Property: fuzz sub-threshold, malformed input, schema mismatch  
+│   ├── FullExploitSequence.t.sol          # Integration: end-to-end exploit → detection → snapFreeze → blocked  
+│   ├── attack/  
+│   │   └── LiveHoodiExploit.s.sol         # Live simulator: unified multi-vector campaign script for Hoodi  
+│   └── utils/  
+│       └── BridgeTestBase.t.sol           # Shared setUp: deploys all mocks + trap + response for reuse  
+├── script/  
+│   ├── DeployMocks.sol                    # Deploys MockVault, MockGateway, MockRouter to any EVM  
+│   └── DeployResponse.sol                 # Deploys BridgeRouterGuardResponse with env-injected addresses  
+├── lib/  
+├── drosera.toml                           # Shadow node config: sampling window, cooldown, response fn, webhooks  
+└── alert-server.js                        # Node.js telemetry: decodes AlertData → routes to Slack/webhook  
+```  
+  
+---  
+  
+*Deployed on Hoodi Testnet. All transactions verifiable on-chain.*
+

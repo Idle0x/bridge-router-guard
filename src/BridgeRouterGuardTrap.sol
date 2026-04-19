@@ -54,10 +54,11 @@ struct AlertData {
 // ─────────────────────────────────────────────────────────────────────────────
 contract BridgeRouterGuardTrap is ITrap {
 
-    // Hoodi Testnet mock infrastructure addresses (v2 deployment)
-    address public constant VAULT   = 0xac031158562D5834416b47A89143B9d3059a2589;
-    address public constant GATEWAY = 0xe629cC7b2ceB14380FA6c8c0C1431171AF411184;
-    address public constant ROUTER  = 0xF6C17127BBB5Cbc9234146A78B081ed68D0b8904;
+    // Hoodi Testnet mock infrastructure addresses (v3 patched deployment)
+    // [!] UPDATE THESE THREE ADDRESSES WITH YOUR NEW DEPLOYMENT [!]
+    address public constant VAULT   = 0x3bc95EcA084085E983d32b4D53c741c06594D6a6; 
+    address public constant GATEWAY = 0xd971Cc78d84503c720587EcdE355d2fF54200f5b;
+    address public constant ROUTER  = 0x94abC47bE7002E2232bd4660fbEC18471547707e;
 
     // ─── Thresholds ──────────────────────────────────────────────────────────
     // TODO(production): Replace with oracle-backed asset normalization.
