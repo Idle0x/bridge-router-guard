@@ -3,36 +3,121 @@ pragma solidity ^0.8.20;
 
 interface IPausable {
     function emergencyPause() external;
+    function paused() external view returns (bool);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// BridgeRouterGuardResponse
+//
+// The execution contract for snapFreeze() containment.
+// ─────────────────────────────────────────────────────────────────────────────
 contract BridgeRouterGuardResponse {
-    address public constant VAULT = 0x83c9e182b10aC6B62C559F9092C0Cfc12394Ab1E;
-    address public constant GATEWAY = 0x544fFbCde66A95b24829EB6a5e803d27E7737Dc1;
-    address public constant ROUTER = 0xca324202c796Aa8A5d8Ddcac384852854A253D66;
+
+    address public immutable VAULT;
+    address public immutable GATEWAY;
+    address public immutable ROUTER;
 
     address public owner;
+    address public pendingOwner;
     mapping(address => bool) public authorizedOperators;
 
-    event AttackPrevented(uint256 vaultVelocity, uint256 phantomVelocity, bool routerSpoofed);
+    uint256 public lastFreezeBlock;
+    uint256 public constant COOLDOWN_BLOCKS = 33;
 
-    constructor() {
-        owner = msg.sender;
+    event AttackPrevented(
+        address indexed caller,
+        uint256 vaultVelocity,
+        uint256 phantomVelocity,
+        bool routerSpoofed,
+        uint256 blockNumber
+    );
+    event TargetPauseResult(address indexed target, bool success, string reason);
+    event OperatorUpdated(address indexed operator, bool status, address indexed updatedBy);
+    event OwnershipTransferInitiated(address indexed currentOwner, address indexed pendingOwner);
+    event OwnershipTransferAccepted(address indexed newOwner);
+    event OwnershipTransferCancelled(address indexed cancelledBy);
+
+    constructor(address _vault, address _gateway, address _router) {
+        require(_vault   != address(0), "vault zero address");
+        require(_gateway != address(0), "gateway zero address");
+        require(_router  != address(0), "router zero address");
+        VAULT   = _vault;
+        GATEWAY = _gateway;
+        ROUTER  = _router;
+        owner   = msg.sender;
     }
 
-    modifier onlyOperator() {
-        require(authorizedOperators[msg.sender], "not authorized");
+    modifier onlyOwner() {
+        require(msg.sender == owner, "not owner");
         _;
     }
 
-    function setOperator(address op, bool status) external {
-        require(msg.sender == owner, "not owner");
-        authorizedOperators[op] = status;
+    modifier onlyOperator() {
+        require(authorizedOperators[msg.sender], "not authorized operator");
+        _;
     }
 
-    function snapFreeze(uint256 vaultV, uint256 phantomV, bool spoof) external virtual onlyOperator {
-        IPausable(VAULT).emergencyPause();
-        IPausable(GATEWAY).emergencyPause();
-        IPausable(ROUTER).emergencyPause();
-        emit AttackPrevented(vaultV, phantomV, spoof);
+    modifier cooldownElapsed() {
+        require(
+            block.number >= lastFreezeBlock + COOLDOWN_BLOCKS,
+            "cooldown active"
+        );
+        _;
+    }
+
+    function snapFreeze(uint256 vaultV, uint256 phantomV, bool spoof)
+        external
+        virtual
+        onlyOperator
+        cooldownElapsed
+    {
+        lastFreezeBlock = block.number;
+
+        _pauseTarget(VAULT,   "Vault");
+        _pauseTarget(GATEWAY, "Gateway");
+        _pauseTarget(ROUTER,  "Router");
+
+        emit AttackPrevented(msg.sender, vaultV, phantomV, spoof, block.number);
+    }
+
+    function _pauseTarget(address target, string memory label) internal {
+        try IPausable(target).paused() returns (bool isPaused) {
+            if (isPaused) {
+                emit TargetPauseResult(target, true, string(abi.encodePacked(label, ": already paused")));
+                return;
+            }
+        } catch {}
+
+        try IPausable(target).emergencyPause() {
+            emit TargetPauseResult(target, true, string(abi.encodePacked(label, ": paused")));
+        } catch Error(string memory reason) {
+            emit TargetPauseResult(target, false, string(abi.encodePacked(label, ": failed - ", reason)));
+        } catch {
+            emit TargetPauseResult(target, false, string(abi.encodePacked(label, ": failed - unknown")));
+        }
+    }
+
+    function setOperator(address op, bool status) external onlyOwner {
+        require(op != address(0), "zero address");
+        authorizedOperators[op] = status;
+        emit OperatorUpdated(op, status, msg.sender);
+    }
+
+    function transferOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "zero address");
+        pendingOwner = newOwner;
+        emit OwnershipTransferInitiated(owner, newOwner);
+    }
+
+    function acceptOwnership() external {
+        require(msg.sender == pendingOwner, "not pending owner");
+        owner = pendingOwner;
+        pendingOwner = address(0);
+        emit OwnershipTransferAccepted(owner);
+    }
+
+    function cancelOwnershipTransfer() external onlyOwner {
+        pendingOwner = address(0);
+        emit OwnershipTransferCancelled(msg.sender);
     }
 }

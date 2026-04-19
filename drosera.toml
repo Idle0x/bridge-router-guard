@@ -1,26 +1,38 @@
-ethereum_rpc = "https://rpc.hoodi.ethpandaops.io/"
-drosera_rpc = "https://relay.hoodi.drosera.io"
-eth_chain_id = 560048
+ethereum_rpc    = "https://rpc.hoodi.ethpandaops.io/"
+drosera_rpc     = "https://relay.hoodi.drosera.io"
+eth_chain_id    = 560048
 drosera_address = "0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D"
 
 [traps]
 [traps.bridge_router_guard]
-path = "out/BridgeRouterGuardTrap.sol/BridgeRouterGuardTrap.json"
-response_contract = "0x1Ec29Ad65831CB73929CB75949a7EC9E15a1E60e"
+path              = "out/BridgeRouterGuardTrap.sol/BridgeRouterGuardTrap.json"
+response_contract = "0x833c4F5CbE9CBf9f05ef44f99A69bb2487588685"
 response_function = "snapFreeze(uint256,uint256,bool)"
+
+# Raised from 3 → 7.
+# 2–3 blocks: sufficient for hard boolean invariants (Vector 3).
+# 5–8 blocks: recommended for velocity/drain traps (Vectors 1 & 2).
+# 7 provides enough window for chunked drain detection while keeping
+# reaction time fast enough for cross-chain finality windows.
+block_sample_size = 7
+
+# 33 blocks (~396s). Also enforced on-chain in Response contract.
 cooldown_period_blocks = 33
+
+# TESTNET ONLY — set >= 3 for production.
+# min = 1 means one key compromise can pause the entire protocol unilaterally.
 min_number_of_operators = 1
-max_number_of_operators = 3
-block_sample_size = 3
+max_number_of_operators = 5
+
 private_trap = true
-whitelist = ["0xcf75bea7a11eb0a764dc85def2f36c3ed826ae59"]
-address = "0x1D880D83Ce107C6961495Ef767b8E4099A94F72E"
+whitelist    = ["0xcf75bea7a11eb0a764dc85def2f36c3ed826ae59"]
+address      = "0x1D880D83Ce107C6961495Ef767b8E4099A94F72E"
 
 [traps.bridge_router_guard.alert]
-title = "Bridge Compromise Detected"
-severity = "critical"
-enabled = true
-labels = { "component" = "router-guard", "description" = "Velocity anomaly or spoofed payload detected" }
+title            = "Bridge Compromise Detected"
+severity         = "critical"
+enabled          = true
+labels           = { "component" = "router-guard", "description" = "Velocity anomaly or spoofed payload detected" }
 alert_output_sig = "decodeAlertOutput"
-users = [ { address = "0xcf75bea7a11eb0a764dc85def2f36c3ed826ae59" } ]
-slack = { slack_channel = "#general" }
+users            = [ { address = "0xcf75bea7a11eb0a764dc85def2f36c3ed826ae59" } ]
+slack            = { slack_channel = "#general" }

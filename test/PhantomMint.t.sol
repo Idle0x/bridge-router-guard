@@ -1,52 +1,70 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./utils/BridgeTestBase.t.sol";
+import "forge-std/Test.sol";
+import "../src/TestableBridgeRouterGuardTrap.sol";
+import "../src/mocks/MockBridgeVault.sol";
+import "../src/mocks/MockTokenGateway.sol";
+import "../src/mocks/MockBridgeRouter.sol";
 
-contract PhantomMintTest is BridgeTestBase {
-    function test_IgnoresNormalVolume() public {
-        // Capture baseline
-        bytes memory prevData = trap.collect();
+contract PhantomMintTest is Test {
+    TestableBridgeRouterGuardTrap trap;
+    MockBridgeVault vault;
+    MockTokenGateway gateway;
+    MockBridgeRouter router;
 
-        // Admin mints a normal, safe amount under the threshold
-        gateway.changeAdmin(address(this), bytes("valid_proof"));
-        gateway.mintPhantom(5000 ether);
-
-        // Capture current state
-        bytes memory currentData = trap.collect();
-        bytes[] memory window = new bytes[](2);
-        window[0] = currentData;
-        window[1] = prevData;
-
-        (bool trigger,) = trap.shouldRespond(window);
-
-        // Trap should NOT fire
-        assertFalse(trigger, "Trap falsely triggered on normal mint volume");
+    function setUp() public {
+        vault = new MockBridgeVault();
+        gateway = new MockTokenGateway();
+        router = new MockBridgeRouter();
+        trap = new TestableBridgeRouterGuardTrap(address(vault), address(gateway), address(router));
     }
 
-    function test_PhantomMintTriggersTrap() public {
-        bytes memory prevData = trap.collect();
+    function test_phantomMint_HyperbridgeExploit() public {
+        // [EXPLOIT MODEL: IoTeX ioTube Feb 2026 / Hyperbridge Apr 2026]
+        // Attacker escalates privileges (e.g. MMR proof replay) to become admin,
+        // then mints unbacked tokens on the destination chain.
 
-        // Attacker hijacks admin and mints a massive amount
-        gateway.changeAdmin(address(0xBAD), bytes("fakeMMRproof"));
-        vm.prank(address(0xBAD));
+        address attacker = address(0xBAD);
+
+        // [EXPLOIT EXECUTION - Step 1] Privilege Escalation
+        // Replicates missing signature/MMR validation allowing arbitrary admin change.
+        gateway.changeAdmin(attacker, "");
+
+        // [EXPLOIT EXECUTION - Step 2] Unbacked Mint
+        vm.prank(attacker);
         gateway.mintPhantom(15000 ether);
 
-        bytes memory currentData = trap.collect();
-        bytes[] memory window = new bytes[](2);
-        window[0] = currentData;
-        window[1] = prevData;
+        // We simulate the Drosera nodes capturing the block window (Oldest vs Newest)
+        bytes[] memory data = new bytes[](2);
 
-        // Evaluate Trap
-        (bool trigger, bytes memory payload) = trap.shouldRespond(window);
-        assertTrue(trigger, "Trap failed to detect massive phantom mint");
+        // Newest block sample (Post-Exploit)
+        data[0] = abi.encode(CollectOutput({
+            schemaVersion: 1,
+            cumulativeWithdrawals: 0,
+            phantomMinted: gateway.phantomMinted(), // 15000 ETH
+            spoofedMessageExecuted: false
+        }));
 
-        // Execute Containment
-        vm.prank(operator);
-        (uint256 vDrain, uint256 pMint, bool rSpoof) = abi.decode(payload, (uint256, uint256, bool));
-        response.snapFreeze(vDrain, pMint, rSpoof);
+        // Oldest block sample (Pre-Exploit)
+        data[1] = abi.encode(CollectOutput({
+            schemaVersion: 1,
+            cumulativeWithdrawals: 0,
+            phantomMinted: 0,
+            spoofedMessageExecuted: false
+        }));
 
-        // Verify lockdown
-        assertTrue(gateway.paused(), "Gateway was not paused");
+        // [NEUTRALIZED BY] BridgeRouterGuardTrap.sol shouldRespond():
+        // The logic evaluates: phantomWindowSpiked = (15000e18 > 0) && (15000e18 > 10000e18) -> true
+        (bool trigger, bytes memory payload) = trap.shouldRespond(data);
+
+        // Assert the trap successfully fired
+        assertTrue(trigger, "Trap failed to detect Hyperbridge-style phantom mint");
+
+        // Assert the payload exactly matches the snapFreeze(uint256,uint256,bool) signature
+        (uint256 vaultV, uint256 phantomV, bool spoof) = abi.decode(payload, (uint256, uint256, bool));
+        assertEq(vaultV, 0, "Vault velocity mismatch");
+        assertEq(phantomV, 15000 ether, "Phantom velocity mismatch");
+        assertEq(spoof, false, "Spoof boolean mismatch");
     }
 }

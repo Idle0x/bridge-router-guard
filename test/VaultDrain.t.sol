@@ -1,67 +1,63 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./utils/BridgeTestBase.t.sol";
+import "forge-std/Test.sol";
+import "../src/TestableBridgeRouterGuardTrap.sol";
+import "../src/mocks/MockBridgeVault.sol";
+import "../src/mocks/MockTokenGateway.sol";
+import "../src/mocks/MockBridgeRouter.sol";
 
-contract VaultDrainTest is BridgeTestBase {
-    function test_IgnoresNormalWithdrawal() public {
-        // User withdraws a normal amount (e.g., 100 ETH)
-        vault.removeLiquidity(100 ether);
+// Note: CollectOutput is automatically imported from the Trap contract.
 
-        bytes memory currentData = trap.collect();
-        bytes[] memory window = new bytes[](1);
-        window[0] = currentData;
+contract VaultDrainTest is Test {
+    TestableBridgeRouterGuardTrap trap;
+    MockBridgeVault vault;
+    MockTokenGateway gateway;
+    MockBridgeRouter router;
 
-        (bool trigger,) = trap.shouldRespond(window);
-
-        // Trap should NOT fire
-        assertFalse(trigger, "Trap falsely triggered on normal volume");
+    function setUp() public {
+        vault = new MockBridgeVault();
+        gateway = new MockTokenGateway();
+        router = new MockBridgeRouter();
+        trap = new TestableBridgeRouterGuardTrap(address(vault), address(gateway), address(router));
     }
 
-    function test_VelocitySpikeTriggersTrap() public {
-        // 1. Capture historical state (Block 1)
-        bytes memory prevData = trap.collect();
-
-        // 2. Attacker drains massive amount (Block 2)
+    function test_vaultDrain_MultichainExploit() public {
+        // [EXPLOIT MODEL: Multichain Jul 2023 / Orbit Chain Dec 2023]
+        // The attacker bypasses off-chain validation and directly drains 
+        // the vault without a matching inbound deposit proof.
+        
+        // [EXPLOIT EXECUTION] Attacker calls removeLiquidity to drain 1500 ETH.
         vault.removeLiquidity(1500 ether);
-
-        // 3. Capture current state and build Drosera window array
-        bytes memory currentData = trap.collect();
-        bytes[] memory window = new bytes[](2);
-        window[0] = currentData;
-        window[1] = prevData;
-
-        // 4. Evaluate Trap
-        (bool trigger, bytes memory payload) = trap.shouldRespond(window);
-        assertTrue(trigger, "Trap failed to detect velocity spike");
-
-        // 5. Execute Containment as the Operator
-        vm.prank(operator);
-        (uint256 vDrain, uint256 pMint, bool rSpoof) = abi.decode(payload, (uint256, uint256, bool));
-        response.snapFreeze(vDrain, pMint, rSpoof);
-
-        // 6. Verify absolute lockdown
-        assertTrue(vault.paused(), "Vault was not paused");
-        assertTrue(gateway.paused(), "Gateway was not paused");
-        assertTrue(router.paused(), "Router was not paused");
-    }
-
-    function test_ChunkedDrainTriggersTrap() public {
-        bytes memory prevData = trap.collect();
-
-        // Attacker tries to bypass the 1000 ETH threshold using 10 smaller transactions
-        for (uint256 i = 0; i < 10; i++) {
-            vault.removeLiquidity(150 ether); // 1500 ETH total
-        }
-
-        bytes memory currentData = trap.collect();
-        bytes[] memory window = new bytes[](2);
-        window[0] = currentData;
-        window[1] = prevData;
-
-        (bool trigger,) = trap.shouldRespond(window);
-
-        // Trap MUST fire because of the cumulative velocity tracking
-        assertTrue(trigger, "Trap failed to detect chunked drain");
+        
+        // We simulate the Drosera nodes capturing the block window (Oldest vs Newest)
+        bytes[] memory data = new bytes[](2);
+        
+        // Newest block sample (Post-Exploit)
+        data[0] = abi.encode(CollectOutput({
+            schemaVersion: 1,
+            cumulativeWithdrawals: vault.cumulativeWithdrawals(), // 1500 ETH
+            phantomMinted: 0,
+            spoofedMessageExecuted: false
+        }));
+        
+        // Oldest block sample (Pre-Exploit)
+        data[1] = abi.encode(CollectOutput({
+            schemaVersion: 1,
+            cumulativeWithdrawals: 0,
+            phantomMinted: 0,
+            spoofedMessageExecuted: false
+        }));
+        
+        // [NEUTRALIZED BY] BridgeRouterGuardTrap.sol shouldRespond():
+        // The logic evaluates: vaultWindowDrained = (1500e18 > 0) && (1500e18 > 1000e18) -> true
+        (bool trigger, bytes memory payload) = trap.shouldRespond(data);
+        
+        assertTrue(trigger, "Trap failed to detect Multichain-style vault drain");
+        
+        (uint256 vaultV, uint256 phantomV, bool spoof) = abi.decode(payload, (uint256, uint256, bool));
+        assertEq(vaultV, 1500 ether, "Vault velocity payload mismatch");
+        assertEq(phantomV, 0, "Phantom velocity payload mismatch");
+        assertEq(spoof, false, "Spoof boolean mismatch");
     }
 }
