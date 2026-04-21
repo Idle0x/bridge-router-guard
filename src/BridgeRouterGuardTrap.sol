@@ -42,9 +42,23 @@ struct AlertData {
 //   No high-value execution may occur without a validated inbound event.
 //
 // Three detection vectors:
-//   Vector 1 — High-velocity liquidity drain   (Multichain Jul 2023, Orbit Chain Dec 2023, Force Bridge Jun 2025)
-//   Vector 2 — Privilege escalation / phantom mint (IoTeX Feb 2026, Hyperbridge Apr 2026)
-//   Vector 3 — Forged router payload execution     (CrossCurve Feb 2026, Socket Protocol Jan 2024)
+//
+//   Vector 1 — High-velocity liquidity drain   (Velocity-Based)
+//     References: Multichain Jul 2023, Orbit Chain Dec 2023, Force Bridge Jun 2025
+//
+//   Vector 2 — Privilege escalation / phantom mint (Velocity-Based)
+//     References: IoTeX ioTube Feb 2026, Hyperbridge Apr 2026
+//
+//   Vector 3 — Forged router payload execution     (Hard Boolean Invariant)
+//     References: CrossCurve Feb 2026, Socket Protocol Jan 2024, Kelp DAO Apr 2026
+//
+//     Note on Kelp DAO: this exploit was not anticipated during development —
+//     the trap was already deployed to Hoodi Testnet when the incident occurred.
+//     It was identified as a case study post-deployment because the forged
+//     lzReceive() call through a compromised 1-of-1 DVN produces the same
+//     spoofedMessageExecuted signal as CrossCurve's missing access control.
+//     Different trust-failure mechanism; identical on-chain consequence.
+//     See: case-studies/008-kelp-dao-apr-2026.md
 //
 // Drosera stateless trap requirements:
 //   • collect() is view — no state writes, ever
@@ -65,6 +79,9 @@ contract BridgeRouterGuardTrap is ITrap {
     // These are ETH-equivalent values suitable for this PoC. Production
     // deployments require per-asset USD normalization to prevent multi-asset
     // split evasion across WBTC, USDC, ETH, and other bridged tokens.
+    // The static-threshold limitation is documented in the IoTeX ioTube
+    // (case-studies/006) and Hyperbridge (case-studies/007) case studies,
+    // where sub-cent token prices pushed large nominal mints below threshold.
     uint256 public constant VAULT_DRAIN_THRESHOLD   = 1_000 ether;
     uint256 public constant PHANTOM_MINT_THRESHOLD  = 10_000 ether;
 
@@ -112,9 +129,16 @@ contract BridgeRouterGuardTrap is ITrap {
         CollectOutput memory newest = _decode(data[0]);
 
         // Vector 3 — Hard boolean invariant. Fires immediately, no history needed.
-        // [MITIGATION: CrossCurve Feb 2026 / Socket Protocol Jan 2024]
+        // [MITIGATION: CrossCurve Feb 2026 / Socket Protocol Jan 2024 / Kelp DAO Apr 2026]
+        //
         // Invariant: router must never execute without gateway-validated payload.
         // One unauthorized execution is one too many.
+        //
+        // CrossCurve: ReceiverAxelar.expressExecute() called directly with forged payload.
+        // Socket: performAction() called with injected transferFrom() calldata.
+        // Kelp DAO: lzReceive() called with forged message attested by a compromised
+        //           1-of-1 DVN whose RPC nodes were poisoned. Structurally equivalent
+        //           to no validation — the verifier could not be trusted.
         if (newest.spoofedMessageExecuted) {
             return (true, abi.encode(newest.cumulativeWithdrawals, newest.phantomMinted, true));
         }
