@@ -35,24 +35,19 @@
  */
 "use strict";
 const express = require("express");
-const app = express();
+const app  = express();
 const PORT = process.env.PORT || 3000;
 
 // ─── Environment validation ───────────────────────────────────────────────────
-const ALERT_SECRET = process.env.ALERT_SECRET;
-const EXPECTED_TRAP = process.env.EXPECTED_TRAP?.toLowerCase();
+const ALERT_SECRET      = process.env.ALERT_SECRET;
+const EXPECTED_TRAP     = process.env.EXPECTED_TRAP?.toLowerCase();
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
 
-// Production-mode validation: exit if ALERT_SECRET is missing
-if (!ALERT_SECRET && process.env.NODE_ENV === "production") {
-    console.error("[FATAL] ALERT_SECRET is required in production mode");
-    process.exit(1);
-}if (!ALERT_SECRET) {
+if (!ALERT_SECRET) {
     console.warn("[WARN] ALERT_SECRET not set — endpoint is unauthenticated");
 }
 if (!EXPECTED_TRAP) {
-    console.warn("[WARN] EXPECTED_TRAP not set — any trap address will be accepted");
-}
+    console.warn("[WARN] EXPECTED_TRAP not set — any trap address will be accepted");}
 if (!SLACK_WEBHOOK_URL) {
     console.warn("[WARN] SLACK_WEBHOOK_URL not set — alerts will log only, not dispatch to Slack");
 }
@@ -96,12 +91,12 @@ function normalizeAlertData(responseData) {
         ),
         reserveDrain: String(responseData.reserveDrain ?? "0"),
         willRespondSoon: Boolean(responseData.willRespondSoon ?? false)
-    };}
+    };
+}
 
 // ─── Slack dispatch ───────────────────────────────────────────────────────────
 async function sendSlackAlert(title, severity, trapAddress, blockNumber, labels, alertData) {
-    if (!SLACK_WEBHOOK_URL) {
-        console.log("[Slack disabled] SLACK_WEBHOOK_URL not set — skipping dispatch");
+    if (!SLACK_WEBHOOK_URL) {        console.log("[Slack disabled] SLACK_WEBHOOK_URL not set — skipping dispatch");
         return;
     }
     const routerSpoofed = alertData.unauthorizedExecs !== "0";
@@ -145,19 +140,13 @@ async function sendSlackAlert(title, severity, trapAddress, blockNumber, labels,
         ],
     };
 
-    try {        const res = await fetch(SLACK_WEBHOOK_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-        });
-        if (!res.ok) {
-            const body = await res.text();
-            throw new Error(`Slack webhook failed: ${res.status} ${body}`);
-        }
-        console.log("[Slack] Alert dispatched successfully");
-    } catch (err) {
-        console.error(`[Slack ERROR] Failed to dispatch alert: ${err.message}`);
-        throw err;
+    const res = await fetch(SLACK_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    });
+    if (!res.ok) {        const body = await res.text();
+        throw new Error(`Slack webhook failed: ${res.status} ${body}`);
     }
 }
 
@@ -191,10 +180,11 @@ app.post("/api/alerts", async (req, res) => {
         // ── Normalize payload ─────────────────────────────────────────────────
         const alertData = normalizeAlertData(response_data);
 
-        // ── Log to stdout (explicit labels for all v3 fields) ─────────────────
+        // ── Log to stdout ─────────────────────────────────────────────────────
         console.log("\n=============================================");
         console.log("🚨 DROSERA CRITICAL SECURITY ALERT 🚨");
-        console.log("=============================================");        console.log(`Title:              ${title}`);
+        console.log("=============================================");
+        console.log(`Title:              ${title}`);
         console.log(`Severity:           ${String(severity).toUpperCase()}`);
         console.log(`Trap:               ${trap_address}`);
         console.log(`Block:              ${block_number}`);
@@ -204,8 +194,7 @@ app.post("/api/alerts", async (req, res) => {
         console.log(`Mint Mismatch:      ${alertData.unbackedMinted} wei`);
         console.log(`Unauthorized Execs: ${alertData.unauthorizedExecs}`);
         console.log(`Reserve Drain:      ${alertData.reserveDrain} wei`);
-        console.log(`Proximity Flag:     ${alertData.willRespondSoon ? "APPROACHING RESPONSE" : "MONITORING"}`);
-        console.log("=============================================\n");
+        console.log(`Proximity Flag:     ${alertData.willRespondSoon ? "APPROACHING RESPONSE" : "MONITORING"}`);        console.log("=============================================\n");
 
         // ── Dispatch to Slack ─────────────────────────────────────────────────
         await sendSlackAlert(title, severity, trap_address, block_number, labels, alertData);
@@ -220,8 +209,8 @@ app.post("/api/alerts", async (req, res) => {
 app.get("/health", (_, res) => {
     res.json({
         status: "ok",
-        trap:   process.env.EXPECTED_TRAP ?? "not configured",
-        slack:  process.env.SLACK_WEBHOOK_URL ? "configured" : "not configured",
+        trap:   EXPECTED_TRAP ?? "not configured",
+        slack:  SLACK_WEBHOOK_URL ? "configured" : "not configured",
     });
 });
 

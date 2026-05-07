@@ -3,36 +3,91 @@ drosera_rpc     = "https://relay.hoodi.drosera.io"
 eth_chain_id    = 560048
 drosera_address = "0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D"
 
+# ─── Trap configuration ────────────────────────────────────────────────────────
 [traps]
 [traps.bridge_router_guard]
-path              = "out/BridgeRouterGuardTrap.sol/BridgeRouterGuardTrap.json"
-response_contract = "0x833c4F5CbE9CBf9f05ef44f99A69bb2487588685"
-response_function = "snapFreeze(uint256,uint256,bool)"
 
-# Raised from 3 → 7.
-# 2–3 blocks: sufficient for hard boolean invariants (Vector 3).
-# 5–8 blocks: recommended for velocity/drain traps (Vectors 1 & 2).
-# 7 provides enough window for chunked drain detection while keeping
-# reaction time fast enough for cross-chain finality windows.
+# Path to compiled artifact.
+# After running `forge build`, this file is populated.
+path              = "out/BridgeRouterGuardTrap.sol/BridgeRouterGuardTrap.json"
+
+# Response contract address — deployed by DeployResponse.s.sol.
+response_contract = "0x8C1fD763738B1FDe9b9Ba53ab082E39D5808343d"
+
+# SIGNATURE CHANGE (v3):
+#   v2: snapFreeze(uint256,uint256,uint256)
+#   v3: snapFreeze(uint256,uint256,uint256,uint256)
+#       — all four params are quantities (drain delta, mint delta, unauthorized execs, reserve drain)
+#       — matches what shouldRespond() actually encodes in its return payload
+#       — labels in AttackPrevented event match the values they receive
+response_function = "snapFreeze(uint256,uint256,uint256,uint256)"
+
+# block_sample_size = 7 blocks (~84 seconds at 12s/block).
+# - Provides a wide enough window to catch chunked drain attacks
+#   that split across multiple blocks to stay below per-block burst threshold.
+# - Wide enough for multi-transaction drains (Multichain, Orbit Chain, Force Bridge)
+#   to accumulate detectable mismatch before the window closes.
+# - Narrow enough that response latency stays within cross-chain finality windows.
 block_sample_size = 7
 
-# 33 blocks (~396s). Also enforced on-chain in Response contract.
+# cooldown_period_blocks = 33 (~396 seconds / ~6.6 minutes).
+# Enforced on-chain in BridgeRouterGuardResponse.sol (COOLDOWN_BLOCKS = 33).
+# Prevents spam-freezing. In a genuine attack, the first freeze contains damage.
+# Operators review logs during cooldown before the next snapFreeze is permitted.
 cooldown_period_blocks = 33
 
-# TESTNET ONLY — set >= 3 for production.
-# min = 1 means one key compromise can pause the entire protocol unilaterally.
+# TESTNET ONLY: min_number_of_operators = 1.
+# A 1-operator setup means a single compromised or misbehaving operator can
+# pause the entire protocol unilaterally. This is acceptable for a PoC where
+# the deployer IS the operator and the goal is demonstrating the detection pipeline.
+#
+# PRODUCTION REQUIREMENT: set to >= 3.
+# A 3-operator quorum requires consensus across independent nodes before
+# snapFreeze() executes. In the response timelines in the case studies, this
+# adds at most one additional block of latency (~12 seconds), which does not
+# change any verdict.
 min_number_of_operators = 1
 max_number_of_operators = 5
 
+# private_trap = true restricts which operators may join.
+# whitelist contains the deployer's address.
+# Update whitelist with the actual operator addresses for multi-operator testnet runs.
 private_trap = true
 whitelist    = ["0xcf75bea7a11eb0a764dc85def2f36c3ed826ae59"]
+
+# Trap address — set after `drosera apply`.
 address      = "0x1D880D83Ce107C6961495Ef767b8E4099A94F72E"
 
+# ─── Alert configuration ──────────────────────────────────────────────────────
 [traps.bridge_router_guard.alert]
 title            = "Bridge Compromise Detected"
 severity         = "critical"
 enabled          = true
-labels           = { "component" = "router-guard", "description" = "Velocity anomaly or spoofed payload detected" }
-alert_output_sig = "decodeAlertOutput"
 users            = [ { address = "0xcf75bea7a11eb0a764dc85def2f36c3ed826ae59" } ]
-slack            = { slack_channel = "#general" }
+alert_output_sig = "decodeAlertOutput"
+
+# ── Alert routing: two paths, mutually compatible ──────────────────────────────
+#
+# PATH 1 — Drosera native Slack integration:
+#   Delivers alerts directly to a Slack channel via Drosera's built-in connector.
+#   Requires the Slack workspace to be connected in the Drosera dashboard.
+#   Use a channel ID (e.g. C0123456789) rather than a channel name for reliability.
+#   Channel names can be renamed; IDs cannot.
+slack = { slack_channel = "C0AT77ZV74H" }   # replace with actual channel ID
+# webhook_url = "https://overrule-sniff-envious.ngrok-free.dev"
+
+# PATH 2 — Custom webhook (alert-server.js):
+#   If you want the full decoded telemetry card with drain/mint/exec/reserve deltas,
+#   configure a custom webhook pointing to your running alert-server.js instance.
+#   Uncomment and fill in the URL and shared secret.
+#   The server must be reachable from the Drosera relay network.
+#
+# webhook = { webhook_url = "https://overrule-sniff-envious.ngrok-free.dev/api/alerts" }
+
+# NOTE: Do NOT commit webhook URLs or secrets to the repository.
+# Store them in environment variables and reference via your deployment pipeline.
+#
+# PATH SELECTION:
+#   If only Drosera native Slack is needed: keep `slack` line, comment out `webhook`.
+#   If only custom telemetry server: comment out `slack`, uncomment `webhook`.
+#   If both: both paths deliver alerts independently (additive, not exclusive).

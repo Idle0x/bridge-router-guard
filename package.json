@@ -8,12 +8,21 @@
     "test": "test"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "express": "^5.2.1"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Idle0x/bridge-router-guard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Idle0x/bridge-router-guard/issues"
+  },
+  "homepage": "https://github.com/Idle0x/bridge-router-guard#readme"
 }
