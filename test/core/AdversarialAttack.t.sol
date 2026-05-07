@@ -20,38 +20,34 @@ contract AdversarialAttackTest is BridgeTestBase {
 
     // ── Sub-threshold: attacker knows the threshold ───────────────────────────
 
-    function test_normalVaultTraffic_noTrigger() public {
-        // 20 × 40 ETH = 800 ETH drained -- below 1000 ETH threshold
-        for (uint256 i = 0; i < 20; i++) {
-            vault.executeDirectWithdrawal(attacker, 40 ether);
-        }
-        bytes[] memory data = new bytes[](2);
-        data[0] = trap.collect();
-        data[1] = _enc(0, 0, 0, 0, 0, 0, 0, 0);
+    function test_normalVaultTraffic_noTrigger() public view {
+        // Simulate 800 ETH drain mismatch with partial validation backing
+        // creditGrowth > 0 bypasses zero-backing trigger, isolating threshold logic
+        bytes[] memory data = _buildWindow(
+            0, 0, 0, 0, 0, 0, 0, 0,
+            900 ether, 100 ether, 0, 0, 0, 0, 0, 0 // execGrowth=900, creditGrowth=100 -> delta=800
+        );
         (bool trigger,) = trap.shouldRespond(data);
         assertFalse(trigger, "Sub-threshold drain must NOT trigger");
     }
 
-    function test_normalGatewayTraffic_noTrigger() public {
-        // 50 × 180 ETH = 9000 ETH minted -- below 10000 ETH threshold
-        gateway.changeAdmin(attacker, "");
-        for (uint256 i = 0; i < 50; i++) {
-            vm.prank(attacker);
-            gateway.mint(attacker, 180 ether);
-        }
-        bytes[] memory data = new bytes[](2);
-        data[0] = trap.collect();
-        data[1] = _enc(0, 0, 0, 0, 0, 0, 0, 0);
+    function test_normalGatewayTraffic_noTrigger() public view {
+        // Simulate 9000 ETH mint mismatch with partial validation backing
+        bytes[] memory data = _buildWindow(
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 10_000 ether, 1_000 ether, 0, 0, 0, 0 // mintGrowth=10k, authGrowth=1k -> delta=9k
+        );
         (bool trigger,) = trap.shouldRespond(data);
         assertFalse(trigger, "Sub-threshold phantom mint must NOT trigger");
     }
 
     // ── Boundary precision ────────────────────────────────────────────────────
     function test_exactVaultThreshold_noTrigger() public view {
-        // Exactly 1000 ETH -> does NOT fire (strictly greater-than)
+        // Exactly 1000 ETH delta -> does NOT fire (strictly greater-than)
+        // Partial credit growth ensures zero-backing trigger is bypassed
         bytes[] memory data = _buildWindow(
             0, 0, 0, 0, 0, 0, 0, 0,
-            1_000 ether, 0, 0, 0, 0, 0, 0, 0
+            1_100 ether, 100 ether, 0, 0, 0, 0, 0, 0
         );
         (bool trigger,) = trap.shouldRespond(data);
         assertFalse(trigger, "Exactly 1000 ETH must NOT trigger");
@@ -60,7 +56,7 @@ contract AdversarialAttackTest is BridgeTestBase {
     function test_oneWeiAboveVaultThreshold_triggers() public view {
         bytes[] memory data = _buildWindow(
             0, 0, 0, 0, 0, 0, 0, 0,
-            1_000 ether + 1, 0, 0, 0, 0, 0, 0, 0
+            1_100 ether + 1, 100 ether, 0, 0, 0, 0, 0, 0 // delta = 1000 + 1
         );
         (bool trigger,) = trap.shouldRespond(data);
         assertTrue(trigger, "1000 ETH + 1 wei MUST trigger");
@@ -101,8 +97,7 @@ contract AdversarialAttackTest is BridgeTestBase {
         // Burst deltas: 450 each, both > 400 ETH burst threshold
         // Consecutive streak = 2 ≥ BURST_COUNT_TRIGGER -> fires
         bytes[] memory data = _buildBurstWindow(
-            0, 0, 0, 0,
-            450 ether, 0, 0, 0,
+            0, 0, 0, 0,            450 ether, 0, 0, 0,
             900 ether, 0, 0, 0
         );
         (bool trigger,) = trap.shouldRespond(data);

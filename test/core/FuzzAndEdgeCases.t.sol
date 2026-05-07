@@ -15,9 +15,10 @@ contract FuzzAndEdgeCasesTest is BridgeTestBase {
     // Any drain mismatch at or below threshold must never trigger
     function testFuzz_subThresholdDrainMismatch_neverTriggers(uint256 delta) public view {
         delta = bound(delta, 0, 999 ether);
+        // Provide 100 ETH credit growth to bypass zero-backing hard trigger
         bytes[] memory data = _buildWindow(
             0, 0, 0, 0, 0, 0, 0, 0,
-            delta, 0, 0, 0, 0, 0, 0, 0
+            delta + 100 ether, 100 ether, 0, 0, 0, 0, 0, 0
         );
         (bool trigger,) = trap.shouldRespond(data);
         assertFalse(trigger, "Sub-threshold drain mismatch must never trigger");
@@ -46,11 +47,11 @@ contract FuzzAndEdgeCasesTest is BridgeTestBase {
     }
 
     // Any phantom mint mismatch at or below threshold must never trigger
-    function testFuzz_subThresholdMintMismatch_neverTriggers(uint256 delta) public view {
-        delta = bound(delta, 0, 9_999 ether);
+    function testFuzz_subThresholdMintMismatch_neverTriggers(uint256 delta) public view {        delta = bound(delta, 0, 9_999 ether);
+        // Provide 100 ETH auth growth to bypass zero-backing hard trigger
         bytes[] memory data = _buildWindow(
             0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, delta, 0, 0, 0, 0, 0
+            0, 0, delta + 100 ether, 100 ether, 0, 0, 0, 0
         );
         (bool trigger,) = trap.shouldRespond(data);
         assertFalse(trigger, "Sub-threshold mint mismatch must never trigger");
@@ -95,8 +96,7 @@ contract FuzzAndEdgeCasesTest is BridgeTestBase {
     function test_allTargetsAlreadyPaused_snapFreezeNoRevert() public {
         vault.emergencyPause();
         gateway.emergencyPause();
-        router.emergencyPause();
-        vm.prank(operator);
+        router.emergencyPause();        vm.prank(operator);
         response.snapFreeze(0, 0, 0, 0); // must not revert on already-paused targets
     }
 
@@ -145,8 +145,7 @@ contract ResponseAuthTest is BridgeTestBase {
         response.snapFreeze(1_000 ether, 0, 0, 0);
 
         vm.roll(block.number + 32); // 32 blocks: still in cooldown
-        vm.expectRevert("cooldown active");
-        response.snapFreeze(1_000 ether, 0, 0, 0);
+        vm.expectRevert("cooldown active");        response.snapFreeze(1_000 ether, 0, 0, 0);
 
         vm.roll(block.number + 1); // 33 blocks total: cooldown cleared
         // Already paused — emergencyPause is idempotent, snapFreeze must not revert
@@ -195,8 +194,7 @@ contract ResponseAuthTest is BridgeTestBase {
     function test_ownershipTransfer_revertsIfUnauthorizedAccept() public {
         response.transferOwnership(newOwner);
 
-        vm.prank(unauthorized);
-        vm.expectRevert("not pending owner");
+        vm.prank(unauthorized);        vm.expectRevert("not pending owner");
         response.acceptOwnership();
     }
 

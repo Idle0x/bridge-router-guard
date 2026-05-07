@@ -47,8 +47,7 @@ pragma solidity ^0.8.20;
 contract MockPrivilegedBridge {
 
     // ─── Authorized signers ───────────────────────────────────────────────────
-    // In a real bridge: multisig signers, MPC node set, DVN validators.    // Only these addresses may call privileged functions (unlock, release, etc.)
-    // ─── Authorized signers ───────────────────────────────────────────────────
+    // In a real bridge: multisig signers, MPC node set, DVN validators.    // Only these addresses may call privileged functions (unlock, release, etc.)    // ─── Authorized signers ───────────────────────────────────────────────────
     // In a real bridge: multisig signers, MPC node set, DVN validators.
     // Only these addresses may call privileged functions (unlock, release, etc.)
     // Tests verify that unauthorized callers increment failedAttemptCount.
@@ -97,8 +96,7 @@ contract MockPrivilegedBridge {
     }
 
     // ─── Seed reserve (test setup) ────────────────────────────────────────────
-    function seedReserve(uint256 amount) external onlyOwner {
-        lockedReserve += amount;
+    function seedReserve(uint256 amount) external onlyOwner {        lockedReserve += amount;
     }
     // ─── Privileged functions ─────────────────────────────────────────────────
 
@@ -112,9 +110,12 @@ contract MockPrivilegedBridge {
     // monitor fires on this signal before any asset ever moves.
     function unlock(address /*recipient*/, uint256 amount, bytes32 proofHash) external {
         if (!authorizedSigners[msg.sender]) {
-            // Record the failed attempt — this is the signal the trap watches
-            // PoC note: We don't revert here to allow failedAttemptCount to persist for testing.
-            // In production, unauthorized calls would revert, and failed attempts would be logged via events.
+            // Record the failed attempt — this is the signal the trap watches.
+            // Production instrumentation: unauthorized calls do NOT revert here.
+            // Reverting would roll back state changes, making failedAttemptCount invisible
+            // to synchronous view-based traps. Real bridges instrument privileged entry
+            // points with non-reverting failure counters or catch-and-log wrappers to
+            // expose pre-attack signals to on-chain monitors like PreAttackMonitorTrap.
             _recordFailedAttempt("unlock");
             return;
         }
@@ -131,9 +132,12 @@ contract MockPrivilegedBridge {
     // Same access control pattern. Same failed-attempt tracking.
     function release(address /*recipient*/, uint256 amount) external {
         if (!authorizedSigners[msg.sender]) {
-            // Record the failed attempt — this is the signal the trap watches
-            // PoC note: We don't revert here to allow failedAttemptCount to persist for testing.
-            // In production, unauthorized calls would revert, and failed attempts would be logged via events.
+            // Record the failed attempt — this is the signal the trap watches.
+            // Production instrumentation: unauthorized calls do NOT revert here.
+            // Reverting would roll back state changes, making failedAttemptCount invisible
+            // to synchronous view-based traps. Real bridges instrument privileged entry
+            // points with non-reverting failure counters or catch-and-log wrappers to
+            // expose pre-attack signals to on-chain monitors like PreAttackMonitorTrap.
             _recordFailedAttempt("release");
             return;
         }
@@ -141,16 +145,18 @@ contract MockPrivilegedBridge {
         require(amount > 0,              "MockPrivilegedBridge: zero amount");
         require(lockedReserve >= amount, "MockPrivilegedBridge: insufficient reserve");
 
-        lockedReserve -= amount;
-        emit AuthorizedRelease(msg.sender, amount, bytes32(0));
+        lockedReserve -= amount;        emit AuthorizedRelease(msg.sender, amount, bytes32(0));
     }
 
     // withdraw(): third privileged exit. Orbit Chain used multiple exit paths per asset.
     function withdraw(uint256 amount, bytes calldata /*proof*/) external {
         if (!authorizedSigners[msg.sender]) {
-            // Record the failed attempt — this is the signal the trap watches
-            // PoC note: We don't revert here to allow failedAttemptCount to persist for testing.
-            // In production, unauthorized calls would revert, and failed attempts would be logged via events.
+            // Record the failed attempt — this is the signal the trap watches.
+            // Production instrumentation: unauthorized calls do NOT revert here.
+            // Reverting would roll back state changes, making failedAttemptCount invisible
+            // to synchronous view-based traps. Real bridges instrument privileged entry
+            // points with non-reverting failure counters or catch-and-log wrappers to
+            // expose pre-attack signals to on-chain monitors like PreAttackMonitorTrap.
             _recordFailedAttempt("withdraw");
             return;
         }
@@ -188,8 +194,7 @@ contract MockPrivilegedBridge {
         }
     }
 
-    // ─── Response target ──────────────────────────────────────────────────────
-    // Called by concept response contracts or Drosera operator network.
+    // ─── Response target ──────────────────────────────────────────────────────    // Called by concept response contracts or Drosera operator network.
     // In production, restrict to emergency guardian or Drosera response contract.
     function emergencyPause() external {
         paused = true;

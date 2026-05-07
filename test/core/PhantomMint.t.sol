@@ -47,8 +47,7 @@ contract PhantomMintTest is BridgeTestBase {
 
         assertEq(gateway.getMismatch(), mintAmount, "Mismatch = unbacked mint");
         assertEq(token.balanceOf(attacker), mintAmount, "Attacker holds real minted tokens");
-        bytes[] memory data = new bytes[](2);
-        data[0] = trap.collect();
+        bytes[] memory data = new bytes[](2);        data[0] = trap.collect();
         data[1] = _enc(0, 0, 0, 0, 0, 0, 0, 0);
         (bool trigger, bytes memory payload) = trap.shouldRespond(data);
         assertTrue(trigger, "IoTeX-style phantom mint MUST trigger");
@@ -77,14 +76,13 @@ contract PhantomMintTest is BridgeTestBase {
         assertGt(mintDelta, 10_000 ether, "Mint delta must exceed PHANTOM_MINT_THRESHOLD");
     }
 
-    function test_exactMintThreshold_noTrigger() public {
-        gateway.changeAdmin(attacker, "");
-        vm.prank(attacker);
-        gateway.mint(attacker, 10_000 ether);
-
-        bytes[] memory data = new bytes[](2);
-        data[0] = trap.collect();
-        data[1] = _enc(0, 0, 0, 0, 0, 0, 0, 0);
+    function test_exactMintThreshold_noTrigger() public view {
+        // Exactly 10000 ETH delta -> does NOT fire
+        // Partial auth growth bypasses zero-backing trigger
+        bytes[] memory data = _buildWindow(
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 10_100 ether, 100 ether, 0, 0, 0, 0 // delta = 10000
+        );
         (bool trigger,) = trap.shouldRespond(data);
         assertFalse(trigger, "Exactly 10000 ETH mint must NOT trigger (> not >=)");
     }
@@ -98,23 +96,17 @@ contract PhantomMintTest is BridgeTestBase {
         bytes[] memory data = new bytes[](2);
         data[0] = trap.collect();        data[1] = _enc(0, 0, 0, 0, 0, 0, 0, 0);
         (bool trigger,) = trap.shouldRespond(data);
-        assertFalse(trigger,
-            "Admin change alone must NOT trigger main trap -- OwnershipMonitorTrap covers this");
+        assertFalse(trigger,            "Admin change alone must NOT trigger main trap -- OwnershipMonitorTrap covers this");
     }
 
-    function test_phantomMint_alertThreshold_firesBeforeResponse() public {
-        // Mint 5000 ETH -- above 2000 ETH alert threshold, below 10000 ETH response threshold
-        gateway.changeAdmin(attacker, "");
-        vm.prank(attacker);
-        gateway.mint(attacker, 5_000 ether);
-
-        bytes[] memory data = new bytes[](2);
-        data[0] = trap.collect();
-        data[1] = _enc(0, 0, 0, 0, 0, 0, 0, 0);
-
+    function test_phantomMint_alertThreshold_firesBeforeResponse() public view {
+        // 5000 ETH delta -- above alert, below response
+        bytes[] memory data = _buildWindow(
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 5_100 ether, 100 ether, 0, 0, 0, 0 // delta = 5000
+        );
         (bool respondFire,) = trap.shouldRespond(data);
         assertFalse(respondFire, "5000 ETH must NOT trigger shouldRespond (< 10000 ETH)");
-
         (bool alertFire,) = trap.shouldAlert(data);
         assertTrue(alertFire, "5000 ETH MUST trigger shouldAlert (> 2000 ETH alert threshold)");
     }

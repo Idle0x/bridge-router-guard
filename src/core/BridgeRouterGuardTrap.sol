@@ -97,8 +97,7 @@ struct AlertData {
 //
 // Burst detection (consecutive, not cumulative):
 //   v1 counted any N intervals above threshold regardless of gaps between them.
-//   v2/v3 uses a streak counter that resets on any non-burst interval.//   Two CONSECUTIVE intervals above burst threshold required. Not two any-interval.
-//
+//   v2/v3 uses a streak counter that resets on any non-burst interval.//   Two CONSECUTIVE intervals above burst threshold required. Not two any-interval.//
 // Alert thresholds vs response thresholds:
 //   shouldAlert() fires at ALERT_THRESHOLD (lower) -- generates a notification
 //   without triggering snapFreeze(). Catches Hyperbridge Phase 1 (245 ETH sub-
@@ -147,8 +146,7 @@ contract BridgeRouterGuardTrap is ITrap {
     // ─── Stateless dynamic threshold parameters (v3) ──────────────────────────
     // Dynamic thresholds computed purely from window data (no persistent state).
     // Mean + 2σ band with floor to prevent micro-drain evasion.    // Falls back to static thresholds if insufficient samples.
-    uint256 private constant MIN_SAMPLES_FOR_DYNAMIC = 3;
-    uint256 private constant SIGMA_MULTIPLIER = 2;      // ~95% confidence interval
+    uint256 private constant MIN_SAMPLES_FOR_DYNAMIC = 3;    uint256 private constant SIGMA_MULTIPLIER = 2;      // ~95% confidence interval
     uint256 private constant DYNAMIC_FLOOR = 100 ether; // prevent zero-baseline gaming
 
     // ─── collect() ────────────────────────────────────────────────────────────
@@ -197,8 +195,7 @@ contract BridgeRouterGuardTrap is ITrap {
 
         // ── Vector 3 -- Unauthorized router execution (hard invariant) ─────────        // Fires immediately. No history needed. One unauthorized execution = trigger.
         // [MITIGATION: CrossCurve Feb 2026 / Socket Protocol Jan 2024 / Kelp DAO Apr 2026]
-        // Note: in Kelp's poisoned-DVN path, this may NOT fire (router counters
-        // appear balanced because the poisoned validator registered the message).
+        // Note: in Kelp's poisoned-DVN path, this may NOT fire (router counters        // appear balanced because the poisoned validator registered the message).
         // Vector 1 fires instead on the vault drain mismatch.
         uint256 unauthorizedExecs = _routerMismatch(newest);
         if (unauthorizedExecs > 0) {
@@ -247,8 +244,7 @@ contract BridgeRouterGuardTrap is ITrap {
     //   v1: shouldAlert() fired on identical thresholds as shouldRespond().    //       A lower alert threshold was described in the Hyperbridge case study
     //       but never implemented.
     //   v2/v3: ALERT_THRESHOLD_VAULT = 200 ETH (vs RESPONSE = 1000 ETH).
-    //       This would have fired on Hyperbridge Phase 1 (245 ETH) during the
-    //       ~1-hour gap before Phase 2's massive phantom mint.
+    //       This would have fired on Hyperbridge Phase 1 (245 ETH) during the    //       ~1-hour gap before Phase 2's massive phantom mint.
     //       Operators get a warning. They can investigate. snapFreeze not yet fired.
     function shouldAlert(bytes[] calldata data)
         external
@@ -297,8 +293,7 @@ contract BridgeRouterGuardTrap is ITrap {
                 unauthorizedExecs: 0,
                 reserveDrain:      reserveDrain,
                 willRespondSoon:   willRespondSoon
-            })));
-        }
+            })));        }
 
         return (false, bytes(""));
     }
@@ -337,12 +332,22 @@ contract BridgeRouterGuardTrap is ITrap {
             ? newest.executedWithdrawals - oldest.executedWithdrawals : 0;
         uint256 creditGrowth = newest.validatedInboundCredits > oldest.validatedInboundCredits
             ? newest.validatedInboundCredits - oldest.validatedInboundCredits : 0;
-        drainDelta = execGrowth > creditGrowth ? execGrowth - creditGrowth : 0;
 
         // Vector 2: how much did the mint mismatch GROW in this window?
         uint256 mintGrowth  = newest.cumulativeMinted > oldest.cumulativeMinted
             ? newest.cumulativeMinted - oldest.cumulativeMinted : 0;
         uint256 authGrowth  = newest.validatedMintAuthorizations > oldest.validatedMintAuthorizations            ? newest.validatedMintAuthorizations - oldest.validatedMintAuthorizations : 0;
+
+        // ZERO-BACKING HARD TRIGGER: execution with NO validation backing at all.
+        // No threshold. No tolerance. Any execution against zero validation = critical.
+        // This is the absolute invariant: execution MUST be preceded by validation.
+        if (execGrowth > 0 && creditGrowth == 0) {
+            return (true, execGrowth, 0, 0);        }
+        if (mintGrowth > 0 && authGrowth == 0) {
+            return (true, 0, mintGrowth, 0);
+        }
+
+        drainDelta = execGrowth > creditGrowth ? execGrowth - creditGrowth : 0;
         mintDelta = mintGrowth > authGrowth ? mintGrowth - authGrowth : 0;
 
         // Vector 4: Reserve reconciliation -- did tokens leave without counter movement?
@@ -436,8 +441,7 @@ contract BridgeRouterGuardTrap is ITrap {
     // Schema guard (v1 TODO now implemented):
     //   If either adjacent sample has schemaVersion == 0 (failed decode),
     //   skip that interval entirely rather than computing an inflated delta
-    //   from a zeroed older sample. This eliminates the edge case where a
-    //   decode failure produces a false burst signal.
+    //   from a zeroed older sample. This eliminates the edge case where a    //   decode failure produces a false burst signal.
     function _countConsecutiveBursts(bytes[] calldata data)
         internal
         pure
@@ -486,8 +490,7 @@ contract BridgeRouterGuardTrap is ITrap {
             }
 
             if (mintMismatchStep > BURST_THRESHOLD_PHANTOM) {
-                phantomStreak++;
-                if (phantomStreak > maxPhantomStreak) maxPhantomStreak = phantomStreak;
+                phantomStreak++;                if (phantomStreak > maxPhantomStreak) maxPhantomStreak = phantomStreak;
             } else {
                 phantomStreak = 0;
             }
