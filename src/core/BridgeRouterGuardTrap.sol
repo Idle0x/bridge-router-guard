@@ -284,8 +284,8 @@ contract BridgeRouterGuardTrap is ITrap {
                          (mintDelta  > ALERT_THRESHOLD_PHANTOM) ||
                          (reserveDrain > ALERT_THRESHOLD_VAULT);
 
-        bool willRespondSoon = (drainDelta > ALERT_THRESHOLD_VAULT * 8 / 10) ||
-                               (mintDelta  > ALERT_THRESHOLD_PHANTOM * 8 / 10);
+        bool willRespondSoon = (drainDelta > VAULT_DRAIN_THRESHOLD * 8 / 10) ||
+                               (mintDelta  > PHANTOM_MINT_THRESHOLD * 8 / 10);
 
         if (alertable) {
             return (true, abi.encode(AlertData({
