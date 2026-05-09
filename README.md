@@ -24,27 +24,25 @@ Liquidity is drained. Unbacked tokens are minted. The bridge halts after the fac
 The case studies below document eight incidents sharing this structural property.
 They were selected not for size or notoriety, but because they all produce the same
 class of detectable on-chain signal — and because they collectively test the full
-boundaries of what this trap can and cannot catch. For the full analysis of what
-these cases reveal as a set, see [009 — One Pattern, Eight Instances](./case-studies/009-synthesis.md).
+boundaries of what this trap can and cannot catch.
+
+| Incident | Date | Loss | Root Cause | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| [Multichain](./case-studies/001-multichain-jul-2023.md) | Jul 2023 | ~$231M | MPC keys compromised; vault drained without deposit proofs | `CAUGHT (pre-drain)` |
+| [Orbit Chain](./case-studies/002-orbit-chain-dec-2023.md) | Dec 2023 | ~$81M | 7/10 multisig phished; vault drained in five parallel streams | `CAUGHT (pre-drain)` |
+| [Socket Protocol](./case-studies/003-socket-protocol-jan-2024.md) | Jan 2024 | ~$3.3M | Calldata injection draining user approvals via unsanitized router | `PARTIAL` |
+| [Force Bridge](./case-studies/004-force-bridge-jun-2025.md) | Jun 2025 | ~$3.7M | Compromised deployer key; 6-hour pre-attack window on-chain | `CAUGHT (pre-drain)` |
+| [CrossCurve](./case-studies/005-crosscurve-feb-2026.md) | Feb 2026 | ~$3M | Missing access control on `expressExecute()`; forged payloads across 9 chains | `CAUGHT (post-drain)` |
+| [IoTeX ioTube](./case-studies/006-iotex-iotube-feb-2026.md) | Feb 2026 | ~$4.4M | Validator upgrade bypassed signature checks; reserve drained, tokens minted | `CAUGHT (post-drain)` |
+| [Hyperbridge](./case-studies/007-hyperbridge-apr-2026.md) | Apr 2026 | ~$2.5M | MMR proof bounds-check gap; forged message granted admin over bridged DOT | `CAUGHT (post-drain)` |
+| [Kelp DAO](./case-studies/008-kelp-dao-apr-2026.md) | Apr 2026 | ~$292M | 1-of-1 DVN poisoned via RPC compromise; forged `lzReceive()` drained rsETH reserve | `CAUGHT (post-drain)` |
 
 The attack vector evolves — MPC compromise in 2023, infrastructure-level RPC
 poisoning in 2026 — but the invariant never changes: execution without validation.
 
-Each row below carries an **Attack Replay Verdict**: the exact exploit pattern
-from that incident was simulated against this trap under the same structural
-conditions, and the verdict describes the containment outcome — including how
-much damage was preventable.
-
-| Incident | Date | Loss | Root Cause | Verdict (Attack Replay) |
-| :--- | :--- | :--- | :--- | :--- |
-| [Multichain](./case-studies/001-multichain-jul-2023.md) | Jul 2023 | ~$231M | MPC keys compromised; vault drained without deposit proofs | `CAUGHT · ~$200M protected · pre-drain` |
-| [Orbit Chain](./case-studies/002-orbit-chain-dec-2023.md) | Dec 2023 | ~$81M | 7/10 multisig phished; vault drained in five parallel streams | `CAUGHT · ~$60M protected · pre-drain` |
-| [Socket Protocol](./case-studies/003-socket-protocol-jan-2024.md) | Jan 2024 | ~$3.3M | Calldata injection draining user approvals via unsanitized router | `PARTIAL · wrong attack surface` |
-| [Force Bridge](./case-studies/004-force-bridge-jun-2025.md) | Jun 2025 | ~$3.7M | Compromised deployer key; 6-hour pre-attack window on-chain | `CAUGHT · ~$2.5M protected · pre-drain` |
-| [CrossCurve](./case-studies/005-crosscurve-feb-2026.md) | Feb 2026 | ~$3M | Missing access control on `expressExecute()`; forged payloads across 9 chains | `CAUGHT · ~$1.3M protected · post-drain` |
-| [IoTeX ioTube](./case-studies/006-iotex-iotube-feb-2026.md) | Feb 2026 | ~$4.4M | Validator upgrade bypassed signature checks; reserve drained, tokens minted | `CAUGHT · ~$3M protected · post-drain` |
-| [Hyperbridge](./case-studies/007-hyperbridge-apr-2026.md) | Apr 2026 | ~$2.5M | MMR proof bounds-check gap; forged message granted admin over bridged DOT | `CAUGHT · ~$1.7M protected · post-drain` |
-| [Kelp DAO](./case-studies/008-kelp-dao-apr-2026.md) | Apr 2026 | ~$292M | 1-of-1 DVN poisoned via RPC compromise; forged `lzReceive()` drained rsETH reserve | `CAUGHT · ~$200M protected · post-drain` |
+For the full analysis of what these cases reveal as a set, see:
+- [009 — One Pattern, Eight Instances](./case-studies/009-synthesis.md)
+- [010 — Architecture and Extensions](./case-studies/010-architecture-and-extensions.md)
 
 ---
 
@@ -64,7 +62,7 @@ single massive drains and chunked attacks designed to evade static transaction l
 ### Three Vectors. One Response.
 
 **Vector 1 — High-Velocity Liquidity Drain** *(Velocity-Based)*
-*References: [Multichain](./case-studies/001-multichain-jul-2023.md), [Orbit Chain](./case-studies/002-orbit-chain-dec-2023.md), [Force Bridge](./case-studies/004-force-bridge-jun-2025.md)*
+*References: Multichain, Orbit Chain, Force Bridge*
 
 Attackers often split large drains across multiple transactions to evade fixed limits.
 The trap tracks `cumulativeWithdrawals` across the `block_sample_size` window (7 blocks),
@@ -73,14 +71,10 @@ in the window fires the response. Additionally, a per-block burst detector evalu
 intervals where the single-block delta exceeds 400 ETH — two consecutive intervals above
 this threshold trigger containment independently of the window total.
 
-As discovered during Hoodi testnet execution (see [Vector 1b: Sequencer Anomaly](#vector-1b-testnet-discovery-the-sequencer-anomaly)),
-chunked sub-threshold transactions broadcast simultaneously may be batched into a
-single block by the L2 sequencer, bypassing consecutive-burst counters.
-
 → [`src/BridgeRouterGuardTrap.sol`](./src/BridgeRouterGuardTrap.sol) · [`src/mocks/MockBridgeVault.sol`](./src/mocks/MockBridgeVault.sol)
 
 **Vector 2 — Privilege Escalation & Phantom Mint** *(Velocity-Based)*
-*References: [IoTeX ioTube](./case-studies/006-iotex-iotube-feb-2026.md), [Hyperbridge](./case-studies/007-hyperbridge-apr-2026.md)*
+*References: IoTeX ioTube, Hyperbridge*
 
 Post-compromise, attackers frequently grant themselves admin rights and mint unbacked
 tokens. The trap monitors the `phantomMinted` cumulative state continuously. A delta
@@ -92,29 +86,25 @@ strategies.
 → [`src/BridgeRouterGuardTrap.sol`](./src/BridgeRouterGuardTrap.sol) · [`src/mocks/MockTokenGateway.sol`](./src/mocks/MockTokenGateway.sol)
 
 **Vector 3 — Forged Router Payload** *(Hard Invariant — Immediate Trigger)*
-*References: [Socket Protocol](./case-studies/003-socket-protocol-jan-2024.md), [CrossCurve](./case-studies/005-crosscurve-feb-2026.md), [Kelp DAO](./case-studies/008-kelp-dao-apr-2026.md)*
+*References: Socket Protocol, CrossCurve, Kelp DAO*
 
 The most direct attack path: a payload executes on the router without passing through
 canonical gateway validation. This is enforced as a strict state invariant — if
 `spoofedMessageExecuted` becomes true, the response fires immediately. No velocity
 calculation. No history required. One unauthorized execution triggers absolute containment.
-This is the same invariant violated in the Kelp DAO exploit, where a forged
-`lzReceive()` bypassed a poisoned 1-of-1 DVN rather than an unauthenticated
-public function — different trust-failure mechanism, identical on-chain consequence.
 
 → [`src/BridgeRouterGuardTrap.sol`](./src/BridgeRouterGuardTrap.sol) · [`src/mocks/MockBridgeRouter.sol`](./src/mocks/MockBridgeRouter.sol)
 
 ### Verdict Labels
 
-Each case study carries an Attack Replay Verdict: the exact exploit pattern from
-that incident was simulated against this trap under matching structural conditions,
-and the verdict describes the containment outcome honestly.
+Each case study carries one of four verdicts that describe the trap's containment
+outcome honestly:
 
 | Verdict | Meaning |
 |---|---|
-| `CAUGHT · $X protected · pre-drain` | Trap fires before the majority of losses complete; attack was progressive (multi-transaction); dollar figure reflects funds still in the bridge when snapFreeze executes |
-| `CAUGHT · $X protected · post-drain` | Initial loss completes in one atomic block (unpreventable); all follow-on damage contained; dollar figure reflects confirmed follow-on attempts or remaining TVL protected |
-| `PARTIAL · wrong attack surface` | Trap fires but monitors wrong contracts or receives signal too late for meaningful containment |
+| `CAUGHT (pre-drain)` | Trap fires before the majority of losses complete; attack was progressive (multi-transaction) |
+| `CAUGHT (post-drain)` | Initial loss completes in one block (unpreventable); all follow-on damage contained |
+| `PARTIAL` | Trap fires but monitors wrong contracts or receives signal too late for meaningful containment |
 | `NOT CAUGHT` | Exploit is structurally outside the trap's detection surface |
 
 ---
@@ -160,11 +150,11 @@ is strictly better than zero containment. Every target's pause result is emitted
 
 ---
 
-## Live Proof: The Incident Response Lifecycle
+## Testnet Validation
 
-To validate the trap under real-world network latency and state mechanics, a sequential
-attack campaign was executed on the Hoodi Testnet. This demonstrates the complete
-DevSecOps incident response lifecycle: Compromise → Containment → Remediation → Resumption.
+The attack campaigns below were executed against mock bridge contracts deployed on Hoodi Testnet — contracts that deliberately replicate the structural weaknesses documented in the case studies. The mock contracts are the exploit targets. What is being validated is the Drosera operator pipeline: does `collect()` read the state change, does `shouldRespond()` fire, does the operator network reach consensus, and does `snapFreeze()` execute — all before the next block.
+
+The full lifecycle — exploit → detection → response → remediation → resumption — was run end to end.
 
 ### Phase 1: The Initial Compromise & Stateful Containment
 
@@ -176,22 +166,22 @@ infrastructure using the unified campaign simulator
 - **Attack Execution:** 1,500 ETH drained, 15,000 phantom tokens minted, and a spoofed payload
   executed simultaneously ([Tx `0x56448...`](https://hoodi.etherscan.io/tx/0x56448692abf69a4cdbbe0eeee1e1292a525abad0d226fab440000edf540e7730)).
 
-The Drosera operator network immediately detected the anomaly and executed `snapFreeze`
+The Drosera operator network detected the anomaly and executed `snapFreeze`
 (→ [BridgeRouterGuardResponse.sol](./src/BridgeRouterGuardResponse.sol)). Telemetry
 revealed the trap remained in a sustained `ShouldRespond='true'` state across subsequent
 blocks for hours, with active 33-block cooldown suppressions to prevent redundant transaction
 spam.
 
-Because the trap functions as a stateful invariant guard, it monitors cumulative state
-rather than transient events. The attacker permanently altered blockchain state (phantom
-supply > 10,000 ETH and router spoof flag = true), leaving the mathematical invariant
-broken — the trap maintains a locked state until human intervention resets it.
+The trap monitors cumulative state rather than transient events. The attacker permanently
+altered blockchain state (phantom supply > 10,000 ETH and router spoof flag = true),
+leaving the invariant broken — the trap maintains a locked state until human intervention
+resets it.
 
 ### Phase 2: Incident Remediation (The Redeployment)
 
-To test the remaining vectors in isolation, we simulated a real-world DevSecOps incident
-response: halting the bridge, patching the vulnerability, and redeploying the infrastructure
-proxy contracts to reset corrupted state.
+To test the remaining vectors in isolation, the initial infrastructure was halted, the
+vulnerability patched, and the proxy contracts redeployed to reset corrupted state —
+simulating a real incident response.
 
 | Contract | Address | Deploy Tx |
 | :--- | :--- | :--- |
@@ -200,55 +190,54 @@ proxy contracts to reset corrupted state.
 | Patched Router | [`0x94abC47bE7002E2232bd4660fbEC18471547707e`](https://hoodi.etherscan.io/address/0x94abC47bE7002E2232bd4660fbEC18471547707e) | [Tx `0xb3452...`](https://hoodi.etherscan.io/tx/0xb3452754c290f8a1ab943354a39fdfc527863a265a7f65ad698703155bbbadec) |
 
 Once the trap was pointed to the clean addresses, it immediately returned to
-`ShouldRespond='false'`, proving the complete incident response lifecycle.
+`ShouldRespond='false'`.
 
 ### Phase 3: Isolated Vector Validation
 
-#### Vector 2 Verification: Phantom Mint
+#### Vector 2 — Phantom Mint
 
-| Event | Transaction |
-| :--- | :--- |
-| Phantom Mint Executed | [`0xb58f6...`](https://hoodi.etherscan.io/tx/0xb58f6ce5d57026888b37af9c235329c71ad22f4b01a7b6d718bc59dca866aed5) |
-| snapFreeze Triggered | [`0x14d3a...`](https://hoodi.etherscan.io/tx/0x14d3a3c9b4ae7646c2247cb2235c2312c26e3c9b8ede468cd782b9a61a8c9903) |
+| Event | Tx Hash | Block | Timestamp (UTC) |
+| :--- | :--- | :--- | :--- |
+| Phantom Mint Executed | [`0xb58f6...`](https://hoodi.etherscan.io/tx/0xb58f6ce5d57026888b37af9c235329c71ad22f4b01a7b6d718bc59dca866aed5) | 2651265 | Apr-19-2026 08:25:00 PM |
+| snapFreeze Triggered | [`0x14d3a...`](https://hoodi.etherscan.io/tx/0x14d3a3c9b4ae7646c2247cb2235c2312c26e3c9b8ede468cd782b9a61a8c9903) | 2651266 | Apr-19-2026 08:25:12 PM |
 
-The velocity delta breached the 10,000 ETH threshold, triggering containment upon
-the next block evaluation.
+The velocity delta breached the 10,000 ETH threshold. The operator network reached
+consensus and `snapFreeze` executed in the immediately following block — **12 seconds**
+after the exploit transaction confirmed.
 
-#### Vector 1b: Testnet Discovery (The Sequencer Anomaly)
+#### Vector 1b — Sequencer Anomaly
 
 A 900 ETH extraction was chunked into two 450 ETH transactions to test burst detection.
 
-| Event | Transaction |
-| :--- | :--- |
-| Chunk 1 Executed | [`0x1ae86...`](https://hoodi.etherscan.io/tx/0x1ae86b0bb9d0fb97d4426d920950a9b1d1e7d93a9f0f5c614df231cab316cbf4) |
-| Chunk 2 Executed | [`0x88bdc...`](https://hoodi.etherscan.io/tx/0x88bdcc84165272892708501c19e313d87e006bc8b401a5cea807567ba8f7f6a3) |
+| Event | Tx Hash | Block | Timestamp (UTC) |
+| :--- | :--- | :--- | :--- |
+| Chunk 1 Executed | [`0x1ae86...`](https://hoodi.etherscan.io/tx/0x1ae86b0bb9d0fb97d4426d920950a9b1d1e7d93a9f0f5c614df231cab316cbf4) | 2651330 | Apr-19-2026 08:38:48 PM |
+| Chunk 2 Executed | [`0x88bdc...`](https://hoodi.etherscan.io/tx/0x88bdcc84165272892708501c19e313d87e006bc8b401a5cea807567ba8f7f6a3) | 2651330 | Apr-19-2026 08:38:48 PM |
 
-**Result (Evasion Successful):** Live testnet telemetry revealed the L2 sequencer
-batched both transactions into the same block. The trap read a single 900 ETH spike
-for that interval — below the 1,000 ETH window threshold, and a single burst interval
-does not satisfy `BURST_COUNT_TRIGGER = 2`. The evasion succeeded.
+Both transactions landed in the same block at the same timestamp — the L2 sequencer
+batched them together. The trap read a single 900 ETH spike for that interval, below
+the 1,000 ETH window threshold, and a single burst interval does not satisfy
+`BURST_COUNT_TRIGGER = 2`. The evasion succeeded.
 
-**Significance:** This demonstrates that rigid on-chain block intervals are vulnerable
-to network-level batching mechanics. Defeating this tactic requires dynamic time-weighted
-averages rather than strict block-to-block deltas — see
-[What's Next](#whats-next-production-deployment-roadmap).
+The identical block number and timestamp are the on-chain proof of the batching. This
+is why rigid block-to-block burst counting is insufficient — two transactions broadcast
+as separate chunks arrived as one. See [What's Next](#whats-next-production-deployment-roadmap)
+for the dynamic threshold upgrade that addresses this.
 
-#### Vector 1a Verification: Single Vault Drain
+#### Vector 1a — Single Vault Drain
 
-| Event | Transaction |
-| :--- | :--- |
-| Malicious Drain Executed | [`0xa1e3d...`](https://hoodi.etherscan.io/tx/0xa1e3dd81cf876be4354ba93f45154e92dc7ef20c137f9d3792d968410d8d563c) |
-| snapFreeze Triggered | [`0x9a537...`](https://hoodi.etherscan.io/tx/0x9a53728d71a97f68fbc9c8899f965223f1c6967c9b8ecbc5248a96acf6d335d3) |
+| Event | Tx Hash | Block | Timestamp (UTC) |
+| :--- | :--- | :--- | :--- |
+| Malicious Drain Executed | [`0xa1e3d...`](https://hoodi.etherscan.io/tx/0xa1e3dd81cf876be4354ba93f45154e92dc7ef20c137f9d3792d968410d8d563c) | 2651355 | Apr-19-2026 08:44:36 PM |
+| snapFreeze Triggered | [`0x9a537...`](https://hoodi.etherscan.io/tx/0x9a53728d71a97f68fbc9c8899f965223f1c6967c9b8ecbc5248a96acf6d335d3) | 2651356 | Apr-19-2026 08:44:48 PM |
 
-1,500 ETH exceeds the hard `VAULT_DRAIN_THRESHOLD`, triggering containment immediately
-on the subsequent block evaluation.
+1,500 ETH exceeded the hard `VAULT_DRAIN_THRESHOLD`. `snapFreeze` executed in the
+immediately following block — **12 seconds** after the drain confirmed.
 
-> **Note on containment timing:** The one-block result is a testnet observation with
-> mock infrastructure. In production, actual containment timing depends on finality
-> assumptions of the source chain, cross-chain message relay latency, destination chain
-> execution windows, and bridge-specific design. The testnet result demonstrates the
-> Drosera operator response pipeline works end-to-end — not equivalent timing across all
-> production bridge designs.
+> These timings reflect Hoodi testnet conditions with mock infrastructure. In production,
+> containment timing depends on source chain finality, relay latency, and the specific
+> bridge design. The testnet result validates the operator pipeline end to end — not
+> production timing guarantees across all bridge architectures.
 
 ### Extended Attack Campaign — All Vectors Verified On-Chain
 
@@ -266,29 +255,17 @@ on the subsequent block evaluation.
 
 ## The Circuit Breaker Argument
 
-> *If an attacker successfully drained 1,500 ETH to trigger the trap, doesn't that mean the exploit already succeeded?*
-> In single-chain DeFi, yes. In cross-chain interoperability, no.
+> *If an attacker already drained funds to trigger the trap, hasn't the exploit succeeded?*
 
-A cross-chain exploit is rarely a single atomic transaction — it is a multi-step
-sequence. Stealing from a vault on Chain A, or escalating privileges to mint on a
-Gateway on Chain B, is only step one. The attacker still requires cross-chain message
-finality, or subsequent router execution to swap assets into native gas tokens (exit
-liquidity) before the hack is complete. That execution window is exactly where this
-architecture operates.
+Cross-chain attacks are a process, not a single transaction. The initial drain is step one. The attacker still needs to move, swap, or mint on another chain to actually exit with real money — and that window is where containment operates.
 
-By the time `snapFreeze` fires in the block immediately following the threshold breach,
-the entire infrastructure suite is neutralized. The router is paused, halting swaps.
-The gateway is frozen, preventing further mints. The attacker is left holding heavily
-monitored assets on a locked network with no path forward — securing the remaining
-protocol TVL.
+Kelp DAO is the clearest evidence. The initial drain ($292M) completed at 17:35 UTC and cannot be stopped — the trap fires on block N+1, after that transaction is confirmed. But the attacker returned at 18:26 and 18:28 UTC with two follow-up attempts worth ~$100M each. Both reverted against Kelp's manual pause 46 minutes later. With the trap, those same attempts revert within 24 seconds. Those transaction hashes exist on-chain.
 
-As documented in the [Kelp DAO case study](./case-studies/008-kelp-dao-apr-2026.md),
-both confirmed follow-up attempts (~$200M combined) reverted against Kelp's manual
-pause 46 minutes after the initial drain. With the trap, those same attempts would
-have reverted against `snapFreeze` within 24 seconds.
+The 46-minute gap is also where the Aave bad debt happened. The attacker used that window to deposit stolen rsETH as collateral and borrow ~$236M in real ETH — which is what cascaded into Lido's EarnETH exposure days later. A 24-second freeze window doesn't guarantee that specific play is stopped, but it's a materially different situation than 46 uncontested minutes.
 
-*(See timing caveats above — actual containment outcomes depend on source-chain finality
-and relay latency for the specific bridge design.)*
+For Multichain and Orbit Chain the case is stronger still, because those attacks were slow. Multichain drained over 4 hours. Orbit Chain ran five asset streams across 90 minutes. The trap fires on the first threshold breach — everything still in the bridge after that point has block numbers. For Orbit Chain that's ~$60M across four sequential streams that drained after the ETH stream would have triggered containment.
+
+BridgeRouterGuard handles this layer — the bridge reserve, the gateway, the router. What happens to funds that already left the bridge, and what happens in downstream protocols like Aave, requires additional traps watching those surfaces. See [010 — Architecture and Extensions](./case-studies/010-architecture-and-extensions.md) for what that full stack looks like.
 
 ---
 
@@ -301,7 +278,7 @@ reserve contracts. The following scenarios fall outside that scope by design.*
    - *"Low and Slow":* An attacker extracting 100 ETH/block over 15 blocks never trips the 400 ETH burst limit, and the 7-block sum never trips the 1,000 ETH limit.
    - *"Sequencer Batching":* As discovered during Hoodi testnet execution, chunked sub-threshold transactions broadcast simultaneously may be batched into a single block by the L2 sequencer, bypassing consecutive-burst counters. Defeating both tactics requires dynamic time-weighted averages — see [What's Next](#whats-next-production-deployment-roadmap).
 
-2. **Multi-asset split attacks.** The trap operates on a single ETH-equivalent counter per vector. Simultaneously draining 400 ETH of Token A and 400 ETH of Token B doesn't trigger either threshold individually. Defense requires oracle-backed asset normalization into a unified risk value. As the [IoTeX ioTube case study](./case-studies/006-iotex-iotube-feb-2026.md) demonstrates, sub-cent token prices can push even large nominal mints below the static threshold.
+2. **Multi-asset split attacks.** The trap operates on a single ETH-equivalent counter per vector. Simultaneously draining 400 ETH of Token A and 400 ETH of Token B doesn't trigger either threshold individually. Defense requires oracle-backed asset normalization into a unified risk value.
 
 3. **Threshold gaming by a well-informed attacker.** An attacker who knows the constants and has patience can operate at exactly 499 ETH/block indefinitely. Dynamic thresholds derived from rolling baselines eliminate this surface.
 
@@ -309,7 +286,7 @@ reserve contracts. The following scenarios fall outside that scope by design.*
 
 5. **Flash-loan-funded single-block manipulation.** Velocity detection is inherently inter-block — it measures state changes between blocks. An attack that opens and closes within a single atomic transaction leaves no cross-block delta to measure. This trap is not designed for intra-block invariant monitoring; that requires a different detection primitive.
 
-6. **Operator quorum is set to 1 for this testnet deployment.** On Hoodi testnet, independent operators are limited. In production, `min_number_of_operators` must be ≥ 3 so that no single key compromise can unilaterally trigger a freeze. The [Kelp DAO exploit](./case-studies/008-kelp-dao-apr-2026.md) is a direct illustration of what single-point-of-trust validation costs at scale.
+6. **Operator quorum is set to 1 for this testnet deployment.** On Hoodi testnet, independent operators are limited. In production, `min_number_of_operators` must be ≥ 3 so that no single key compromise can unilaterally trigger a freeze.
 
 ---
 
@@ -371,11 +348,11 @@ Across 1,024+ randomized inputs:
 
 | Contract | Address |
 | :--- | :--- |
-| BridgeRouterGuardTrap | [`0x1D880D83Ce107C6961495Ef767b8E4099A94F72E`](https://hoodi.etherscan.io/address/0x1D880D83Ce107C6961495Ef767b8E4099A94F72E) |
-| BridgeRouterGuardResponse | [`0x833c4F5CbE9CBf9f05ef44f99A69bb2487588685`](https://hoodi.etherscan.io/address/0x833c4F5CbE9CBf9f05ef44f99A69bb2487588685) |
-| MockBridgeVault (Patched) | [`0x3bc95EcA084085E983d32b4D53c741c06594D6a6`](https://hoodi.etherscan.io/address/0x3bc95EcA084085E983d32b4D53c741c06594D6a6) |
-| MockTokenGateway (Patched) | [`0xd971Cc78d84503c720587EcdE355d2fF54200f5b`](https://hoodi.etherscan.io/address/0xd971Cc78d84503c720587EcdE355d2fF54200f5b) |
-| MockBridgeRouter (Patched) | [`0x94abC47bE7002E2232bd4660fbEC18471547707e`](https://hoodi.etherscan.io/address/0x94abC47bE7002E2232bd4660fbEC18471547707e) |
+| BridgeRouterGuardTrap | `0x1D880D83Ce107C6961495Ef767b8E4099A94F72E` |
+| BridgeRouterGuardResponse | `0x833c4F5CbE9CBf9f05ef44f99A69bb2487588685` |
+| MockBridgeVault (Patched) | `0x3bc95EcA084085E983d32b4D53c741c06594D6a6` |
+| MockTokenGateway (Patched) | `0xd971Cc78d84503c720587EcdE355d2fF54200f5b` |
+| MockBridgeRouter (Patched) | `0x94abC47bE7002E2232bd4660fbEC18471547707e` |
 
 ### Telemetry & Dependencies
 
@@ -397,33 +374,38 @@ private_trap             = true
 
 ## Relevance to Production Infrastructure
 
-This architecture is directly applicable to any EVM-based bridge or interoperability
-protocol. The core invariant and the three detection vectors map cleanly to production
-environments:
+BridgeRouterGuard maps to real production protocols because the attack pattern it monitors — execution without validation — is the same across all of them. The three vectors apply wherever the same structural conditions exist:
 
-- **LayerZero:** Abnormal `lzReceive()` execution velocity without a corresponding verified endpoint proof on the receiving UltraLightNode (maps to Vector 1). The Kelp DAO exploit is the direct real-world instantiation — a poisoned 1-of-1 DVN approved a forged `lzReceive()` call, producing the exact signal profile Vector 3 detects; see [008 — Kelp DAO](./case-studies/008-kelp-dao-apr-2026.md).
-- **Axelar:** `execute()` / `expressExecute()` call patterns on AxelarGateway bypassing `validateContractCall()` — exactly the CrossCurve pattern (maps to Vector 3); see [005 — CrossCurve](./case-studies/005-crosscurve-feb-2026.md).
-- **Wormhole:** Guardian VAA replay or forged messages bypassing `verifyVM()`, leading to unauthorized `completeTransfer()` mint (maps to Vector 2).
-- **Across Protocol:** SpokePool outflow velocity without matching HubPool deposit events or proof finalization (maps to Vector 1).
-- **DeFi Integrations:** Any lending protocol accepting bridged collateral where phantom-minted tokens are used to drain isolated lending pools before the source-chain compromise is detected.
+- **LayerZero:** Abnormal `lzReceive()` execution velocity without a corresponding verified endpoint proof (Vector 1). The Kelp DAO exploit is the direct instantiation — a poisoned 1-of-1 DVN approved a forged `lzReceive()`, producing the exact signal Vector 3 also detects. See [008 — Kelp DAO](./case-studies/008-kelp-dao-apr-2026.md).
+- **Axelar:** `execute()` / `expressExecute()` patterns on AxelarGateway bypassing `validateContractCall()` — exactly the CrossCurve pattern (Vector 3). See [005 — CrossCurve](./case-studies/005-crosscurve-feb-2026.md).
+- **Wormhole:** Guardian VAA replay or forged messages bypassing `verifyVM()`, leading to unauthorized `completeTransfer()` mint (Vector 2).
+- **Across Protocol:** SpokePool outflow velocity without matching HubPool deposit events or proof finalization (Vector 1).
 
-A production deployment replaces the mock addresses with live protocol contracts, tunes
-the velocity thresholds to match historical normal-flow baselines, and raises
-`min_number_of_operators` to ≥ 3.
+### Deploying for a Real Protocol
+
+Swapping mock addresses for live contract addresses is the first step, not the complete picture. A production deployment starts with mapping the protocol — every contract involved in the critical path, every route the bridge operates, every downstream protocol that accepts its tokens. That map determines which traps are needed and what each one should monitor.
+
+BridgeRouterGuard covers the bridge reserve and execution layer. A protocol like Kelp also has a DVN trust layer, an admin control layer on its token contracts, and downstream Aave exposure. Each of those surfaces has its own failure mode and its own detectable signal. Some can be additional vectors in an extended version of this trap. Some warrant entirely separate traps running in parallel on the same Drosera operator network.
+
+The full picture of what that layered stack looks like — which traps to build, what each monitors, and how they interact — is in [010 — Architecture and Extensions](./case-studies/010-architecture-and-extensions.md).
+
+For the bridge reserve layer specifically, a production deployment replaces the mock addresses with live protocol contracts, calibrates velocity thresholds to match historical normal-flow baselines for that specific protocol, and raises `min_number_of_operators` to ≥ 3.
 
 ---
 
 ## What's Next: Production Deployment Roadmap
 
-- **Oracle-Injected Asset Normalization:** Drosera's strict requirement that `shouldRespond()` remains a pure function means the trap cannot natively query external price oracles. Future iterations will require expanding the `collect()` payload to safely ingest cryptographically verified off-chain oracle data. This is the direct fix for the threshold gap documented in the [IoTeX ioTube](./case-studies/006-iotex-iotube-feb-2026.md) and [Hyperbridge](./case-studies/007-hyperbridge-apr-2026.md) case studies.
+**Extending the trap stack.** BridgeRouterGuard monitors the bridge reserve and execution layer. After studying eight exploits, the gaps are documented — admin-level takeovers, pre-attack observable windows, downstream position exposure, DVN infrastructure preconditions. Each of those gaps has a corresponding trap design grounded in real incidents. The architecture for building that full stack is in [010 — Architecture and Extensions](./case-studies/010-architecture-and-extensions.md).
 
-- **Off-Chain Statistical Processing (Dynamic Thresholds):** As demonstrated by the Vector 1b testnet sequencer anomaly, rigid block-to-block limits are vulnerable to network batching. Replacing static thresholds with rolling-average math requires complex windowing that risks exceeding Drosera operator evaluation constraints. Production deployments must utilize Drosera's upcoming coprocessor to handle heavy statistical windowing off-chain.
+**Oracle-Injected Asset Normalization.** `shouldRespond()` must remain a pure function — Drosera's architecture requires it. That means the trap cannot natively query external price oracles. Monitoring low-denomination tokens like CIOTX (IoTeX case) or sub-threshold per-chain losses (CrossCurve) requires expanding the `collect()` payload to ingest cryptographically verified off-chain oracle data. This is the direct fix for the threshold gaps documented in [006 — IoTeX](./case-studies/006-iotex-iotube-feb-2026.md) and [007 — Hyperbridge](./case-studies/007-hyperbridge-apr-2026.md).
 
-- **Mainnet Operator Quorum:** The current testnet environment limits the availability of independent operators. Upon mainnet release, `min_number_of_operators` must be raised to ≥ 3 with multisig execution enforcement on the Response contract to prevent unilateral operator griefing.
+**Dynamic Thresholds via Off-Chain Processing.** The Vector 1b sequencer anomaly showed that static block-to-block thresholds are vulnerable to network-level batching. Rolling-average math is the fix — but it requires windowing logic too complex for on-chain operator evaluation. Production deployments need Drosera's upcoming coprocessor to handle that processing off-chain.
 
-- **Cross-Chain Relayer Expansion:** As the Drosera operator network officially expands its relayer support to Arbitrum, Base, and Optimism, this exact trap logic can be deployed cross-chain to monitor fragmented bridge endpoints natively.
+**Mainnet Operator Quorum.** `min_number_of_operators` must be raised to ≥ 3 on mainnet with multisig execution enforcement on the Response contract. The testnet runs at 1 operator — a configuration that exists only because independent operators are limited on Hoodi.
 
-- **ZK Incident Response:** Integrate Drosera's zero-knowledge proof layer for optimistic claim disputes, ensuring that if an operator attempts a malicious `snapFreeze`, the protocol can mathematically challenge the evaluation payload.
+**Cross-Chain Relayer Expansion.** As Drosera's operator network expands to Arbitrum, Base, and Optimism, the same trap logic deploys cross-chain to monitor fragmented bridge endpoints natively. The Kelp and CrossCurve cases both showed that multi-chain attacks require per-chain deployments — a single Ethereum deployment only covers one side of a nine-chain exploit.
+
+**ZK Incident Response.** Integration with Drosera's zero-knowledge proof layer for optimistic claim disputes — ensuring that if an operator attempts a malicious `snapFreeze`, the protocol can mathematically challenge the evaluation payload.
 
 ---
 
@@ -435,7 +417,7 @@ the velocity thresholds to match historical normal-flow baselines, and raises
 
 - [`src/TestableBridgeRouterGuardTrap.sol`](./src/TestableBridgeRouterGuardTrap.sol) — CI shadow. Inherits all production logic unchanged. Overrides only `collect()` to accept injected addresses instead of constants, enabling isolated Foundry testing without touching production code.
 
-- [`src/mocks/`](./src/mocks/) — Vulnerable protocol simulation. Three contracts that deliberately replicate the structural weaknesses from real incidents: unmatched withdrawals (Multichain/Orbit), unverified admin and unbacked minting (IoTeX/Hyperbridge), unvalidated payload execution (CrossCurve/Socket). The `MockBridgeRouter` additionally models the LayerZero DVN trust pattern as exploited in [Kelp DAO](./case-studies/008-kelp-dao-apr-2026.md).
+- [`src/mocks/`](./src/mocks/) — Vulnerable protocol simulation. Three contracts that deliberately replicate the structural weaknesses from real incidents: unmatched withdrawals (Multichain/Orbit), unverified admin and unbacked minting (IoTeX/Hyperbridge), unvalidated payload execution (CrossCurve/Socket).
 
 - [`test/`](./test/) — Three layers. Core unit tests confirm threshold boundaries per vector. [`AdversarialAttack.t.sol`](./test/AdversarialAttack.t.sol) and [`FuzzAndEdgeCases.t.sol`](./test/FuzzAndEdgeCases.t.sol) pressure-test against threshold gaming, chunked drains, cold-start conditions, malformed inputs, and schema mismatches. [`FullExploitSequence.t.sol`](./test/FullExploitSequence.t.sol) runs the complete pipeline end-to-end.
 
@@ -458,22 +440,22 @@ bridge-router-guard/
 │   └── mocks/
 │       ├── MockBridgeVault.sol            # Vector 1: unmatched withdrawal model (Multichain/Orbit)
 │       ├── MockTokenGateway.sol           # Vector 2: unverified admin + unbacked mint model (IoTeX/Hyperbridge)
-│       └── MockBridgeRouter.sol           # Vector 3: unvalidated payload execution model (CrossCurve/Socket/Kelp)
+│       └── MockBridgeRouter.sol           # Vector 3: unvalidated payload execution model (CrossCurve/Socket)
 ├── test/
-│   ├── VaultDrain.t.sol                   # Unit: velocity threshold fires on drain spike
-│   ├── PhantomMint.t.sol                  # Unit: delta detection fires on unbacked mint
-│   ├── RouterSpoof.t.sol                  # Unit: boolean invariant fires immediately on spoof
-│   ├── ResponseAuth.t.sol                 # Auth: operator/owner access control + cooldown boundary
-│   ├── AdversarialAttack.t.sol            # Adversarial: threshold gaming, chunked bursts, cold start, counter reset
-│   ├── FuzzAndEdgeCases.t.sol             # Property: fuzz sub-threshold, malformed input, schema mismatch
-│   ├── FullExploitSequence.t.sol          # Integration: end-to-end exploit → detection → snapFreeze → blocked
+│   ├── VaultDrain.t.sol
+│   ├── PhantomMint.t.sol
+│   ├── RouterSpoof.t.sol
+│   ├── ResponseAuth.t.sol
+│   ├── AdversarialAttack.t.sol
+│   ├── FuzzAndEdgeCases.t.sol
+│   ├── FullExploitSequence.t.sol
 │   ├── attack/
-│   │   └── LiveHoodiExploit.s.sol         # Live simulator: unified multi-vector campaign script for Hoodi
+│   │   └── LiveHoodiExploit.s.sol
 │   └── utils/
-│       └── BridgeTestBase.t.sol           # Shared setUp: deploys all mocks + trap + response for reuse
+│       └── BridgeTestBase.t.sol
 ├── script/
-│   ├── DeployMocks.sol                    # Deploys MockVault, MockGateway, MockRouter to any EVM
-│   └── DeployResponse.sol                 # Deploys BridgeRouterGuardResponse with env-injected addresses
+│   ├── DeployMocks.sol
+│   └── DeployResponse.sol
 ├── case-studies/
 │   ├── 000-template.md
 │   ├── 001-multichain-jul-2023.md
@@ -487,50 +469,10 @@ bridge-router-guard/
 │   ├── 009-synthesis.md
 │   └── 010-architecture-and-extensions.md
 ├── lib/
-├── drosera.toml                           # Shadow node config: sampling window, cooldown, response fn, webhooks
-└── alert-server.js                        # Node.js telemetry: decodes AlertData → routes to Slack/webhook
+├── drosera.toml
+└── alert-server.js
 ```
 
 ---
 
-*Deployed on Hoodi Testnet. All transactions verifiable on-chain.*```
-bridge-router-guard/
-├── src/
-│   ├── BridgeRouterGuardTrap.sol          # Stateless sensor: collect() + shouldRespond() + shouldAlert()
-│   ├── BridgeRouterGuardResponse.sol      # Circuit breaker: snapFreeze() with try/catch + two-step ownership
-│   ├── TestableBridgeRouterGuardTrap.sol  # CI shadow: inherits all logic, overrides collect() for injection
-│   └── mocks/
-│       ├── MockBridgeVault.sol            # Vector 1: unmatched withdrawal model (Multichain/Orbit)
-│       ├── MockTokenGateway.sol           # Vector 2: unverified admin + unbacked mint model (IoTeX/Hyperbridge)
-│       └── MockBridgeRouter.sol           # Vector 3: unvalidated payload execution model (CrossCurve/Socket/Kelp)
-├── test/
-│   ├── VaultDrain.t.sol                   # Unit: velocity threshold fires on drain spike
-│   ├── PhantomMint.t.sol                  # Unit: delta detection fires on unbacked mint
-│   ├── RouterSpoof.t.sol                  # Unit: boolean invariant fires immediately on spoof
-│   ├── ResponseAuth.t.sol                 # Auth: operator/owner access control + cooldown boundary
-│   ├── AdversarialAttack.t.sol            # Adversarial: threshold gaming, chunked bursts, cold start, counter reset
-│   ├── FuzzAndEdgeCases.t.sol             # Property: fuzz sub-threshold, malformed input, schema mismatch
-│   ├── FullExploitSequence.t.sol          # Integration: end-to-end exploit → detection → snapFreeze → blocked
-│   ├── attack/
-│   │   └── LiveHoodiExploit.s.sol         # Live simulator: unified multi-vector campaign script for Hoodi
-│   └── utils/
-│       └── BridgeTestBase.t.sol           # Shared setUp: deploys all mocks + trap + response for reuse
-├── script/
-│   ├── DeployMocks.sol                    # Deploys MockVault, MockGateway, MockRouter to any EVM
-│   └── DeployResponse.sol                 # Deploys BridgeRouterGuardResponse with env-injected addresses
-├── Case-studies                           # Documentation and replays of exploits into patterns
-│   ├── 000-template.md
-│   ├── 001-multichain-jul-2023.md
-│   ├── 002-orbit-chain-dec-2023.md
-│   ├── 003-socket-protocol-jan-2024.md
-│   ├── 004-force-bridge-jun-2025.md
-│   ├── 005-crosscurve-feb-2026.md
-│   ├── 006-iotex-iotube-feb-2026.md
-│   ├── 007-hyperbridge-apr-2026.md
-│   ├── 008-kelp-dao-apr-2026.md
-│   ├── 009-synthesis.md
-│   └── 010-architecture-and-extensions.md
-├── lib/
-├── drosera.toml                           # Shadow node config: sampling window, cooldown, response fn, webhooks
-└── alert-server.js                        # Node.js telemetry: decodes AlertData → routes to Slack/webhook
-```
+*Deployed on Hoodi Testnet. All transactions verifiable on-chain.*

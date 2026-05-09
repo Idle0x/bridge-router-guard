@@ -1,4 +1,4 @@
-ethereum_rpc    = "https://rpc.hoodi.ethpandaops.io/"
+ethereum_rpc    = "https://rpc.hoodi.ethpandaops.io"
 drosera_rpc     = "https://relay.hoodi.drosera.io"
 eth_chain_id    = 560048
 drosera_address = "0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D"
@@ -74,15 +74,15 @@ alert_output_sig = "decodeAlertOutput"
 #   Use a channel ID (e.g. C0123456789) rather than a channel name for reliability.
 #   Channel names can be renamed; IDs cannot.
 slack = { slack_channel = "C0AT77ZV74H" }   # replace with actual channel ID
-# webhook_url = "https://overrule-sniff-envious.ngrok-free.dev"
 
 # PATH 2 — Custom webhook (alert-server.js):
 #   If you want the full decoded telemetry card with drain/mint/exec/reserve deltas,
 #   configure a custom webhook pointing to your running alert-server.js instance.
 #   Uncomment and fill in the URL and shared secret.
 #   The server must be reachable from the Drosera relay network.
-#
-# webhook = { webhook_url = "https://overrule-sniff-envious.ngrok-free.dev/api/alerts" }
+webhook = { webhook_url = "https://your-server.com/api/alerts", webhook_headers = { "x-alert-secret" = "your-secret" }}
+
+# removed webhook URL due to a drosera apply error "can not contain localhost in production"
 
 # NOTE: Do NOT commit webhook URLs or secrets to the repository.
 # Store them in environment variables and reference via your deployment pipeline.
