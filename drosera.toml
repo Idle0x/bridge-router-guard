@@ -12,7 +12,7 @@ drosera_address = "0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D"
 path              = "out/BridgeRouterGuardTrap.sol/BridgeRouterGuardTrap.json"
 
 # Response contract address — deployed by DeployResponse.s.sol.
-response_contract = "0x8C1fD763738B1FDe9b9Ba53ab082E39D5808343d"
+response_contract = "0x6cD3d9f6637DB44be4c78f091a8984A8C1E0bAE7"
 
 # SIGNATURE CHANGE (v3):
 #   v2: snapFreeze(uint256,uint256,uint256)
@@ -53,7 +53,7 @@ max_number_of_operators = 5
 # whitelist contains the deployer's address.
 # Update whitelist with the actual operator addresses for multi-operator testnet runs.
 private_trap = true
-whitelist    = ["0xcf75bea7a11eb0a764dc85def2f36c3ed826ae59"]
+whitelist    = ["0xcf75bea7a11eb0a764dc85def2f36c3ed826ae59", "0xEd9EDd8586b20524CafA4F568413C504C9B03172", "0x9d059eFAF63a6B964e6887537053b192510EfD88"]
 
 # Trap address — set after `drosera apply`.
 address      = "0x1D880D83Ce107C6961495Ef767b8E4099A94F72E"
@@ -80,7 +80,7 @@ slack = { slack_channel = "C0AT77ZV74H" }   # replace with actual channel ID
 #   configure a custom webhook pointing to your running alert-server.js instance.
 #   Uncomment and fill in the URL and shared secret.
 #   The server must be reachable from the Drosera relay network.
-webhook = { webhook_url = "https://your-server.com/api/alerts", webhook_headers = { "x-alert-secret" = "your-secret" }}
+# webhook = { webhook_url = "https://your-server.com/api/alerts", webhook_headers = { "x-alert-secret" = "your-secret" }}
 
 # removed webhook URL due to a drosera apply error "can not contain localhost in production"
 

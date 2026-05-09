@@ -114,9 +114,9 @@ contract BridgeRouterGuardTrap is ITrap {
 
     // Hoodi Testnet addresses -- update after redeployment of rebuilt mocks.
     // [!] UPDATE THESE WITH YOUR NEW DEPLOYMENT ADDRESSES [!]
-    address public constant VAULT   = 0xf21b271991F8b2C04709825741D9268e980b7821;
-    address public constant GATEWAY = 0xBcBEe1D047Ab8Ee9F7696EA8bD9A11A2B2a5d77E;
-    address public constant ROUTER  = 0x0c4916bd92D16D0631923ec6391D6a2245F76B71;
+    address public constant VAULT   = 0x8b45D9422389bA5E81F80756DAf942F47c0708E3;
+    address public constant GATEWAY = 0x4f0e7f0290Ad2B10EA638a46cD1E1FCd2cebF43C;
+    address public constant ROUTER  = 0x9E009270A7d750f197Ab569511bEB5031f50bd07;
 
     // ─── Response thresholds (shouldRespond / snapFreeze) ─────────────────────
     // A mismatch exceeding these thresholds triggers snapFreeze().

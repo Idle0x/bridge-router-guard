@@ -8,9 +8,6 @@ import "src/mocks/core/MockMessageValidator.sol";
 import "src/mocks/core/MockBridgeVault.sol";
 import "src/mocks/core/MockTokenGateway.sol";
 import "src/mocks/core/MockBridgeRouter.sol";
-import "src/mocks/concepts/MockLendingPool.sol";
-import "src/mocks/concepts/MockPrivilegedBridge.sol";
-import "src/mocks/concepts/MockUpgradeableGateway.sol";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DeployMocks.s.sol (v3)
@@ -47,6 +44,7 @@ contract DeployMocks is Script {
         // ── Step 1: Deploy token ──────────────────────────────────────────────
         MockERC20 token = new MockERC20("Bridged ETH", "bETH", 18);
         console.log("Token deployed to:     ", address(token));
+
         // ── Step 2: Deploy oracle ─────────────────────────────────────────────
         MockSourceChainOracle oracle = new MockSourceChainOracle();
         console.log("Oracle deployed to:    ", address(oracle));        
@@ -82,21 +80,21 @@ contract DeployMocks is Script {
         token.addMinter(address(gateway));
         console.log("Vault and Gateway authorized as token minters");
 
-        // ── Step 7: Seed vault with initial liquidity ─────────────────────────
-        // Mint 1000 ETH worth of tokens to deployer, then seed vault.
-        uint256 seedAmount = 1_000 ether;
-        token.mint(deployer, seedAmount);
-        token.approve(address(vault), seedAmount);
-        vault.seedLiquidity(seedAmount);
-        console.log("Vault seeded with 1000 ETH equivalent tokens");
+        // ── Step 7: Seed vault and attacker with massive liquidity ────────────
+        // Replaces the old 1,000 ETH limit with the 2,000,000 ETH you used in cast send
+        uint256 vaultSeed = 2_000_000 ether;
+        uint256 attackerSeed = 2_000_000 ether;
 
-        // ── Step 8: Deploy concept mocks (independent of core mocks) ───────────
-        MockLendingPool     lendingPool     = new MockLendingPool();
-        MockPrivilegedBridge privBridge     = new MockPrivilegedBridge(1);
-        MockUpgradeableGateway upgradeGateway = new MockUpgradeableGateway(address(0));
+        // Mint the total amount to the deployer (campaign wallet)
+        token.mint(deployer, vaultSeed + attackerSeed);
 
-        console.log("LendingPool deployed to:   ", address(lendingPool));
-        console.log("PrivilegedBridge deployed: ", address(privBridge));        console.log("UpgradeableGateway deployed:", address(upgradeGateway));
+        // Approve and seed the vault so massive drains (1,500+ ETH) do not underflow
+        token.approve(address(vault), vaultSeed);
+        vault.seedLiquidity(vaultSeed);
+        console.log("Vault seeded with 2,000,000 ETH equivalent tokens");
+
+        // The deployer keeps the remaining 2,000,000 ETH for out-of-scope tests (Test 22)
+        console.log("Campaign wallet funded with 2,000,000 ETH equivalent tokens");
 
         vm.stopBroadcast();
 
@@ -108,9 +106,5 @@ contract DeployMocks is Script {
         console.log("\nSet in .env for DeployResponse.s.sol:");
         console.log("  VAULT_ADDR  =", address(vault));        console.log("  GATEWAY_ADDR=", address(gateway));
         console.log("  ROUTER_ADDR =", address(router));
-        console.log("\nConcept mock addresses (for drosera.toml extensions):");
-        console.log("  LENDING_POOL_ADDR     =", address(lendingPool));
-        console.log("  PRIVILEGED_BRIDGE_ADDR=", address(privBridge));
-        console.log("  UPGRADE_GATEWAY_ADDR  =", address(upgradeGateway));
     }
 }
