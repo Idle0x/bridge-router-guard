@@ -5,74 +5,76 @@ import "forge-std/Script.sol";
 import "src/core/BridgeRouterGuardResponse.sol";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DeployResponse.s.sol (v3)
+// DeployResponse.s.sol (v3 — orchestrator compatible)
 //
-// Deploys BridgeRouterGuardResponse and wires it to the deployed mocks.
-// Must be run AFTER DeployMocks.s.sol.
+// CHANGES FROM PREVIOUS VERSION:
 //
-// CRITICAL POST-DEPLOY STEP:
-//   This script calls setOperator(DROSERA_EXECUTOR, true) automatically.
-//   Without this, the Drosera network can detect but cannot execute snapFreeze().
-//   The DROSERA_EXECUTOR address is read from .env.
+//   1. Reads VAULT, GATEWAY, ROUTER (not VAULT_ADDR etc.)
+//      The orchestrator sets VAULT/GATEWAY/ROUTER in process.env after running
+//      DeployMocks. If this script read VAULT_ADDR, it would use stale values
+//      from the .env file instead of the freshly deployed addresses.
 //
-//   If you do not know your Drosera executor address yet, deploy the trap first
-//   via `drosera apply`, note the executor address from the Drosera dashboard,
-//   then call response.setOperator(executor, true) separately.
+//   2. console.log format updated to match orchestrator parser exactly:
+//        "BridgeRouterGuardResponse deployed at: 0x..."
+//      The orchestrator's parseResponseOutput() matches this exact prefix.
 //
-// Usage:
-//   export VAULT_ADDR=0x...
-//   export GATEWAY_ADDR=0x...
-//   export ROUTER_ADDR=0x...
-//   export DROSERA_EXECUTOR=0x...   # address Drosera uses to call snapFreeze
+//   3. DROSERA_EXECUTOR wiring unchanged — reads from env, skips gracefully
+//      if not set (can be wired manually later via setOperator).
+//
+// Usage (manual):
+//   export PRIVATE_KEY=0x...
+//   export VAULT=0x...         ← use VAULT not VAULT_ADDR
+//   export GATEWAY=0x...
+//   export ROUTER=0x...
+//   export DROSERA_EXECUTOR=0x...
 //
 //   forge script scripts/DeployResponse.s.sol \
 //     --rpc-url https://rpc.hoodi.ethpandaops.io/ \
-//     --broadcast \
-//     --verify
+//     --broadcast
+//
+// Note: The orchestrator runs this automatically during deployCycle().
 // ─────────────────────────────────────────────────────────────────────────────
 contract DeployResponse is Script {
     function run() external {
-        uint256 deployerKey     = vm.envUint("PRIVATE_KEY");
-        address vault           = vm.envAddress("VAULT_ADDR");
-        address gateway         = vm.envAddress("GATEWAY_ADDR");
-        address router          = vm.envAddress("ROUTER_ADDR");
-        
-        // DROSERA_EXECUTOR is optional at deploy time -- can be set later via setOperator
+        uint256 deployerKey = vm.envUint("PRIVATE_KEY");
+
+        // Read from VAULT/GATEWAY/ROUTER — matches what orchestrator sets in process.env
+        // after DeployMocks completes. Do NOT use VAULT_ADDR etc.
+        address vault   = vm.envAddress("VAULT");
+        address gateway = vm.envAddress("GATEWAY");
+        address router  = vm.envAddress("ROUTER");
+
+        // DROSERA_EXECUTOR is optional — can be set later via setOperator
         address droseraExecutor;
         try vm.envAddress("DROSERA_EXECUTOR") returns (address exec) {
             droseraExecutor = exec;
         } catch {
             droseraExecutor = address(0);
         }
-        
+
         vm.startBroadcast(deployerKey);
-        
+
         BridgeRouterGuardResponse response = new BridgeRouterGuardResponse(
             vault, gateway, router
         );
-        
-        console.log("Response deployed to:", address(response));
-        
+
         // Wire the Drosera executor as an authorized operator
         if (droseraExecutor != address(0)) {
             response.setOperator(droseraExecutor, true);
             console.log("Drosera executor authorized:", droseraExecutor);
         } else {
-            console.log("[!] DROSERA_EXECUTOR not set.");
-            console.log("    Run after deployment:");
-            console.log("    response.setOperator(<executor_address>, true)");
+            console.log("[!] DROSERA_EXECUTOR not set — wire manually via setOperator");
         }
-        
+
         vm.stopBroadcast();
-        
-        console.log("\n--- RESPONSE DEPLOYMENT COMPLETE ---");
-        console.log("RESPONSE_CONTRACT:", address(response));
+
+        // ─── ORCHESTRATOR-PARSEABLE OUTPUT ─────────────────────────────────────
+        // parseResponseOutput() matches this exact prefix. Do not change it.
+        console.log("BridgeRouterGuardResponse deployed at:", address(response));
+
         console.log("VAULT:  ", vault);
         console.log("GATEWAY:", gateway);
         console.log("ROUTER: ", router);
         console.log("Owner:  ", response.owner());
-        
-        console.log("\nUpdate drosera.toml:");
-        console.log("  response_contract = \"", address(response), "\"");
     }
 }
