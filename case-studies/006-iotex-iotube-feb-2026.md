@@ -86,7 +86,7 @@ function mintPhantom(uint256 amount) external {
     emit PhantomMinted(amount);
 }
 ```
-→ [`src/mocks/core/MockTokenGateway.sol`](./src/mocks/core/MockTokenGateway.sol)
+→ [`src/mocks/core/MockTokenGateway.sol`](../src/mocks/core/MockTokenGateway.sol)
 
 The TokenSafe drain produces `executedWithdrawals` growth against `validatedInboundCredits = 0`. The zero-backing hard trigger fires on the first withdrawal. Vector 2 fires conceptually but falls below the response threshold at CIOTX market prices. Vector 1 is sufficient for containment. Any bridge architecture where a single key controls both a reserve vault and a minting contract via an upgradeable admin role produces this identical signal on compromise. Hyperbridge ([007](./007-hyperbridge-apr-2026.md)) demonstrates the same downstream consequence via a different root cause (forged MMR proof rather than key compromise), confirming the structural parallel.
 
@@ -112,7 +112,7 @@ if (execGrowth > 0 && creditGrowth == 0) {
     return (true, abi.encode(execGrowth, uint256(0), uint256(0), uint256(0)));
 }
 ```
-→ [`src/core/BridgeRouterGuardTrap.sol`](./src/core/BridgeRouterGuardTrap.sol)
+→ [`src/core/BridgeRouterGuardTrap.sol`](../src/core/BridgeRouterGuardTrap.sol)
 
 The detection pattern is correct. The threshold is calibrated for large-scale phantom minting events. A 410M CIOTX mint at sub-cent token prices produces a delta below the 10,000 ETH equivalent threshold. This documents a known tradeoff of static ETH-equivalent thresholds: they miss phantom mints in low-denomination wrapped tokens. Oracle-backed normalization resolves this in production.
 
@@ -205,7 +205,7 @@ An ownership state vector could read `TokenSafe.owner()` and `MintPool.owner()` 
 **Beyond BridgeRouterGuard:**
 The malicious upgrade is detectable via `Upgraded(address indexed implementation)` events. A separate trap reading `IProxy(VALIDATOR).implementation()` on each block and firing if the implementation address changes to anything outside a known-good set would trigger in the same block as the malicious upgrade — before the ownership transfer, before the drain, before the mint.
 
-This concept is implemented as [`OwnershipMonitorTrap`](./src/concepts/OwnershipMonitorTrap.sol) and tested in [`test/concepts/OwnershipMonitor.t.sol`](./test/concepts/OwnershipMonitor.t.sol). The Hyperbridge case ([007](./007-hyperbridge-apr-2026.md)) independently arrived at the same concept from a different attack path — forged MMR proof rather than compromised upgrade key — reinforcing that admin-change monitoring is the appropriate layer for this attack class. See [010 — Architecture and Extensions](./010-architecture-and-extensions.md#trap-1--ownership-state-monitor) for the full design.
+This concept is implemented as [`OwnershipMonitorTrap`](../src/concepts/OwnershipMonitorTrap.sol) and tested in [`test/concepts/OwnershipMonitor.t.sol`](../test/concepts/OwnershipMonitor.t.sol). The Hyperbridge case ([007](./007-hyperbridge-apr-2026.md)) independently arrived at the same concept from a different attack path — forged MMR proof rather than compromised upgrade key — reinforcing that admin-change monitoring is the appropriate layer for this attack class. See [010 — Architecture and Extensions](./010-architecture-and-extensions.md#trap-2--ownership-state-monitor) for the full design.
 
 ---
 

@@ -38,7 +38,7 @@ struct CollectOutput {
     uint256 vaultTokenBalance;
 }
 ```
-→ [`src/core/BridgeRouterGuardTrap.sol`](./src/core/BridgeRouterGuardTrap.sol)
+→ [`src/core/BridgeRouterGuardTrap.sol`](../src/core/BridgeRouterGuardTrap.sol)
 
 `shouldRespond()` was rewritten around three mismatch computations and one reserve backstop:
 
@@ -54,7 +54,7 @@ if (execGrowth > 0 && creditGrowth == 0) { return (true, ...); }
 uint256 drainDelta = execGrowth > creditGrowth ? execGrowth - creditGrowth : 0;
 if (drainDelta > VAULT_DRAIN_THRESHOLD) { return (true, ...); }
 ```
-→ [`src/core/BridgeRouterGuardTrap.sol`](./src/core/BridgeRouterGuardTrap.sol)
+→ [`src/core/BridgeRouterGuardTrap.sol`](../src/core/BridgeRouterGuardTrap.sol)
 
 The previous version computed `vaultVelocity = newestWithdrawals - oldestWithdrawals` and compared it to a threshold. The v3 implementation computes `execGrowth - creditGrowth` and fires on any positive value against zero credit. A 1,500 ETH withdrawal with 1,500 ETH of validated credit produces `drainDelta = 0` and returns false. A 50 ETH withdrawal with zero credit produces `execGrowth > 0, creditGrowth == 0` and fires immediately.
 
@@ -74,7 +74,7 @@ uint256 balanceDrop = oldest.vaultTokenBalance > newest.vaultTokenBalance
 uint256 reserveDrain = balanceDrop > execGrowth ? balanceDrop - execGrowth : 0;
 if (reserveDrain > VAULT_DRAIN_THRESHOLD) { return (true, ...); }
 ```
-→ [`src/core/BridgeRouterGuardTrap.sol`](./src/core/BridgeRouterGuardTrap.sol)
+→ [`src/core/BridgeRouterGuardTrap.sol`](../src/core/BridgeRouterGuardTrap.sol)
 
 If the vault's actual token balance drops by more than the execution counter grows, funds moved without an accounting record. The `silentDrainCampaign` at block 2801682 validated this path on-chain: a 1,200 ETH silent drain triggered `shouldRespond = true`, and the operator network executed `snapFreeze()` at block 2801685.
 
@@ -96,7 +96,7 @@ if (vaultDelta > BURST_THRESHOLD_VAULT) {
     vaultStreak = 0; // Reset on non-burst interval.
 }
 ```
-→ [`src/core/BridgeRouterGuardTrap.sol`](./src/core/BridgeRouterGuardTrap.sol)
+→ [`src/core/BridgeRouterGuardTrap.sol`](../src/core/BridgeRouterGuardTrap.sol)
 
 The code now enforces consecutive interval detection as originally specified.
 
@@ -112,7 +112,7 @@ The v3 response payload passes actual computed deltas:
 // snapFreeze(uint256 drainDelta, uint256 mintDelta, uint256 unauthorizedExecs, uint256 reserveDrain)
 return (true, abi.encode(drainDelta, mintDelta, unauthorizedExecs, reserveDrain));
 ```
-→ [`src/core/BridgeRouterGuardTrap.sol`](./src/core/BridgeRouterGuardTrap.sol)
+→ [`src/core/BridgeRouterGuardTrap.sol`](../src/core/BridgeRouterGuardTrap.sol)
 
 Event fields now match the values they contain. Telemetry accuracy is required for incident response routing.
 

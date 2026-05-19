@@ -81,7 +81,7 @@ if (execGrowth > 0 && creditGrowth == 0) {
     return (true, abi.encode(execGrowth, uint256(0), uint256(0), uint256(0)));
 }
 ```
-→ [`src/core/BridgeRouterGuardTrap.sol`](./src/core/BridgeRouterGuardTrap.sol)
+→ [`src/core/BridgeRouterGuardTrap.sol`](../src/core/BridgeRouterGuardTrap.sol)
 
 The sequential multi-transaction drain across ~30–60 minutes produces a persistent mismatch from the first Ethereum withdrawal. The zero-backing hard trigger fires on the first sample capturing `execGrowth > 0`. Phase 1 produces no mismatch signal. This is a structural boundary: the most valuable potential intervention window — six hours of observable on-chain failed attempts — is not covered by a mismatch accounting trap. Any lock-and-release bridge where a reserve of locked assets exists on-chain and the release mechanism is controlled by a compromisable off-chain key set produces this identical zero-backing signal. The sunsetting context is architecturally relevant: a bridge in wind-down mode processes minimal flow. Static thresholds calibrated for normal operation become conservative as baseline activity drops. The zero-backing trigger is unaffected by volume, but the threshold path benefits from dynamic calibration against current baseline flow.
 
@@ -109,7 +109,7 @@ if (execGrowth > 0 && creditGrowth == 0) {
     return (true, abi.encode(execGrowth, uint256(0), uint256(0), uint256(0)));
 }
 ```
-→ [`src/core/BridgeRouterGuardTrap.sol`](./src/core/BridgeRouterGuardTrap.sol)
+→ [`src/core/BridgeRouterGuardTrap.sol`](../src/core/BridgeRouterGuardTrap.sol)
 
 The failed privileged function calls during Phase 1 leave `executedWithdrawals` unchanged. Failed transactions that revert produce no counter movement. The trap has no signal to evaluate. Vector 4 serves as the backstop for counter-bypass variants where balance drops occur without corresponding execution counter increments.
 
@@ -200,7 +200,7 @@ The zero-backing trigger covers Phase 2 correctly. No modification to existing v
 
 Force Bridge provides concrete on-chain evidence for a pre-attack window monitor: six hours of failed `unlock()` and `release()` calls from a non-authorized address. These calls reverted but remain permanently visible on-chain. A separate trap watching for this pattern would read `failedAttemptCount` and `lastUnauthorizedCaller`, firing if N failed privileged calls occur within M blocks from an address outside the authorized signer set.
 
-This concept is implemented as [`PreAttackMonitorTrap`](./src/concepts/PreAttackMonitorTrap.sol) and tested in [`test/concepts/PreAttackMonitor.t.sol`](./test/concepts/PreAttackMonitor.t.sol). The campaign demonstrated it at block 2801775 — `preAttackCampaign` executed 5 failed attempts against `MockPrivilegedBridge`, BridgeRouterGuard returned false (correct — no mismatch), and `failedAttemptCount` rose to 5. See [010 — Architecture and Extensions](./010-architecture-and-extensions.md#trap-2--pre-attack-window-monitor) for the full design.
+This concept is implemented as [`PreAttackMonitorTrap`](../src/concepts/PreAttackMonitorTrap.sol) and tested in [`test/concepts/PreAttackMonitor.t.sol`](../test/concepts/PreAttackMonitor.t.sol). The campaign demonstrated it at block 2801775 — `preAttackCampaign` executed 5 failed attempts against `MockPrivilegedBridge`, BridgeRouterGuard returned false (correct — no mismatch), and `failedAttemptCount` rose to 5. See [010 — Architecture and Extensions](./010-architecture-and-extensions.md#trap-3--pre-attack-window-monitor) for the full design.
 
 Force Bridge and Orbit Chain ([002](./002-orbit-chain-dec-2023.md)) together demonstrate the need for this monitor. Force Bridge's failed-call window provides the more actionable signal — the same restricted functions that later succeeded.
 
@@ -214,3 +214,4 @@ Force Bridge and Orbit Chain ([002](./002-orbit-chain-dec-2023.md)) together dem
 - Extractor Web3 (via X, June 2, 2025): "There was failed attempt to execute an attack 6 hours prior to successful one." — https://twitter.com/extractor_web3/status/1929444219757756584
 - Cyvers Alerts (via X, June 2, 2025): Initial detection and asset breakdown — https://twitter.com/cyversalerts/status/1929428359856935185
 - Magickbase official statement (via X, June 2, 2025): "We've detected abnormal activity on #ForceBridge and have paused the service"
+

@@ -54,14 +54,37 @@ MPC key compromise (Multichain), deployer key compromise (Force Bridge), Validat
 
 ---
 
-## Trap 1 — Ownership State Monitor
+## Trap 1 — DVN Attestation Liveness Monitor
+
+**Evidence from:** [Kelp DAO (008)](./008-kelp-dao-apr-2026.md)
+
+The Kelp attack created a ~6-hour window between DVN failover onto poisoned endpoints and the drain. During that window, the DVN operated on falsified data for every query. Whether the resulting attestation patterns are distinguishable from normal DVN maintenance events requires empirical validation against real attestation traffic.
+
+This concept is not implemented as a contract in the current codebase. It is documented here as Trap 1 because the Kelp case provides the strongest available evidence for its value, and because the other three concept traps demonstrate that building and testing a concept is the correct evaluation methodology.
+
+**Proposed monitoring surface:**
+```
+collect():        reads EndpointV2 for DVN attestation frequency,
+                  latency, and source endpoint addresses per OApp pathway
+shouldRespond():  fires if patterns deviate significantly from established
+                  baseline in ways consistent with failover onto different
+                  endpoints — unusual gaps, confirmation spikes, latency
+                  changes, or source endpoint address changes
+response:         pause the OFT bridge pending human review
+```
+
+**Empirical requirement:** Whether attestation pattern deviations from DVN endpoint failover are distinguishable from normal DVN maintenance operations is unknown without baseline data. The other three concept traps are grounded in observable on-chain state (`failedAttemptCount`, `owner()`, collateral composition). DVN attestation liveness requires empirical validation: collect baseline attestation data from a live LayerZero DVN deployment, measure endpoint failover signatures, and determine whether a threshold exists that separates failover from maintenance events. This is an engineering validation step, not an architectural speculation.
+
+---
+
+## Trap 2 — Ownership State Monitor
 
 **Evidence from:** [IoTeX ioTube (006)](./006-iotex-iotube-feb-2026.md) and [Hyperbridge (007)](./007-hyperbridge-apr-2026.md)
 
 Two exploits via entirely different root causes — a compromised upgrade key and a forged MMR proof — both produced the same intermediate step before any phantom minting occurred: admin control over a bridge token contract was transferred to an attacker-controlled address. This intermediate step is observable in the same block it occurs. BridgeRouterGuard fires on the phantom mint. The ownership monitor fires on the transfer, before the first mint is submitted.
 
-**Implementation:** [`src/concepts/OwnershipMonitorTrap.sol`](./src/concepts/OwnershipMonitorTrap.sol)  
-**Tests:** [`test/concepts/OwnershipMonitor.t.sol`](./test/concepts/OwnershipMonitor.t.sol)
+**Implementation:** [`src/concepts/OwnershipMonitorTrap.sol`](../src/concepts/OwnershipMonitorTrap.sol)  
+**Tests:** [`test/concepts/OwnershipMonitor.t.sol`](../test/concepts/OwnershipMonitor.t.sol)
 
 ```solidity
 // OwnershipMonitorTrap.collect()
@@ -73,7 +96,7 @@ struct CollectOutput {
     address gatewayImpl;         // MockUpgradeableGateway.implementation()
 }
 ```
-→ [`src/concepts/OwnershipMonitorTrap.sol`](./src/concepts/OwnershipMonitorTrap.sol)
+→ [`src/concepts/OwnershipMonitorTrap.sol`](../src/concepts/OwnershipMonitorTrap.sol)
 
 `shouldRespond()` fires if either field changes to an address not in the authorized set. The response executes in the same block as the ownership change, before the attacker calls `mintPhantom()` or any equivalent function.
 
@@ -90,14 +113,14 @@ struct CollectOutput {
 
 ---
 
-## Trap 2 — Pre-Attack Window Monitor
+## Trap 3 — Pre-Attack Window Monitor
 
 **Evidence from:** [Force Bridge (004)](./004-force-bridge-jun-2025.md) and [Orbit Chain (002)](./002-orbit-chain-dec-2023.md)
 
 Force Bridge exhibited six hours of failed privileged function calls from a non-authorized address before the first successful drain. Orbit Chain exhibited four hours of structured probe transactions confirming key access across five asset types. Both produced on-chain signals before any funds moved. BridgeRouterGuard has no mismatch to evaluate during these windows. A pre-attack window monitor is the appropriate detection primitive for this phase.
 
-**Implementation:** [`src/concepts/PreAttackMonitorTrap.sol`](./src/concepts/PreAttackMonitorTrap.sol)  
-**Tests:** [`test/concepts/PreAttackMonitor.t.sol`](./test/concepts/PreAttackMonitor.t.sol)
+**Implementation:** [`src/concepts/PreAttackMonitorTrap.sol`](../src/concepts/PreAttackMonitorTrap.sol)  
+**Tests:** [`test/concepts/PreAttackMonitor.t.sol`](../test/concepts/PreAttackMonitor.t.sol)
 
 ```solidity
 // PreAttackMonitorTrap.collect()
@@ -110,7 +133,7 @@ struct CollectOutput {
     uint256 lastAttemptBlock;
 }
 ```
-→ [`src/concepts/PreAttackMonitorTrap.sol`](./src/concepts/PreAttackMonitorTrap.sol)
+→ [`src/concepts/PreAttackMonitorTrap.sol`](../src/concepts/PreAttackMonitorTrap.sol)
 
 `shouldRespond()` fires if `failedAttemptCount` growth exceeds a configured threshold within the observation window, originating from an address outside the authorized signer set.
 
@@ -142,14 +165,14 @@ The scope boundary between BridgeRouterGuard and PreAttackMonitorTrap is validat
 
 ---
 
-## Trap 3 — Position Monitor
+## Trap 4 — Position Monitor
 
 **Evidence from:** [Kelp DAO (008)](./008-kelp-dao-apr-2026.md)
 
 After the Kelp drain, the attacker deposited 116,500 stolen rsETH into Aave V3 as collateral and borrowed ~$236M WETH. This produced a detectable downstream signal in the lending protocol: a sudden large collateral deposit of a bridge token alongside a utilization spike. BridgeRouterGuard monitors bridge contracts and has no visibility into lending pool collateral composition. A position monitor watching the lending pool catches the downstream consequence of the bridge exploit.
 
-**Implementation:** [`src/concepts/PositionMonitorTrap.sol`](./src/concepts/PositionMonitorTrap.sol)  
-**Tests:** [`test/concepts/PositionMonitor.t.sol`](./test/concepts/PositionMonitor.t.sol)
+**Implementation:** [`src/concepts/PositionMonitorTrap.sol`](../src/concepts/PositionMonitorTrap.sol)  
+**Tests:** [`test/concepts/PositionMonitor.t.sol`](../test/concepts/PositionMonitor.t.sol)
 
 ```solidity
 // PositionMonitorTrap.collect()
@@ -162,7 +185,7 @@ struct CollectOutput {
     bool isHighRiskState;
 }
 ```
-→ [`src/concepts/PositionMonitorTrap.sol`](./src/concepts/PositionMonitorTrap.sol)
+→ [`src/concepts/PositionMonitorTrap.sol`](../src/concepts/PositionMonitorTrap.sol)
 
 `shouldRespond()` fires if bridge token collateral concentration exceeds a configured threshold alongside a utilization spike — the specific pattern produced by a large stolen-collateral deposit.
 
@@ -180,51 +203,28 @@ The campaign deposited stolen mock tokens into `MockLendingPool` after a bridge 
 
 ---
 
-## Trap 4 — DVN Attestation Liveness Monitor
-
-**Evidence from:** [Kelp DAO (008)](./008-kelp-dao-apr-2026.md)
-
-The Kelp attack created a ~6-hour window between DVN failover onto poisoned endpoints and the drain. During that window, the DVN operated on falsified data for every query. Whether the resulting attestation patterns are distinguishable from normal DVN maintenance events requires empirical validation against real attestation traffic.
-
-This concept is not implemented as a contract in the current codebase. It is documented here because the Kelp case provides the strongest available evidence for its value, and because the other three concept traps demonstrate that building and testing a concept is the correct evaluation methodology.
-
-**Proposed monitoring surface:**
-```
-collect():        reads EndpointV2 for DVN attestation frequency,
-                  latency, and source endpoint addresses per OApp pathway
-shouldRespond():  fires if patterns deviate significantly from established
-                  baseline in ways consistent with failover onto different
-                  endpoints — unusual gaps, confirmation spikes, latency
-                  changes, or source endpoint address changes
-response:         pause the OFT bridge pending human review
-```
-
-**Empirical requirement:** Whether attestation pattern deviations from DVN endpoint failover are distinguishable from normal DVN maintenance operations is unknown without baseline data. The other three concept traps are grounded in observable on-chain state (`failedAttemptCount`, `owner()`, collateral composition). DVN attestation liveness requires empirical validation: collect baseline attestation data from a live LayerZero DVN deployment, measure endpoint failover signatures, and determine whether a threshold exists that separates failover from maintenance events. This is an engineering validation step, not an architectural speculation.
-
----
-
 ## How These Traps Relate to Each Other
 
 Each trap monitors a different point in the attack chain:
 
 ```
 Off-chain preparation
-  → Trap 4 (DVN attestation) — if the signal is distinguishable
+  → Trap 1 (DVN attestation) — if the signal is distinguishable
 
 Admin takeover / ownership change
-  → Trap 1 (Ownership state monitor) — fires before first phantom mint
+  → Trap 2 (Ownership state monitor) — fires before first phantom mint
 
 Pre-attack privileged function attempts
-  → Trap 2 (Pre-attack window monitor) — fires before first successful drain
+  → Trap 3 (Pre-attack window monitor) — fires before first successful drain
 
 First on-chain accounting violation
   → BridgeRouterGuard — always the backstop, fires on consequence
 
 Downstream protocol exploitation
-  → Trap 3 (Position monitor) — fires on lending pool impact
+  → Trap 4 (Position monitor) — fires on lending pool impact
 ```
 
-BridgeRouterGuard catches every case that produces an accounting mismatch. It is sufficient for six of the eight exploits in this set. The three implemented concept traps cover the documented gaps: the ownership change that precedes the mint (Trap 1), the failed-attempt window before the drain (Trap 2), and the downstream lending protocol impact after the drain (Trap 3).
+BridgeRouterGuard catches every case that produces an accounting mismatch. It is sufficient for six of the eight exploits in this set. The three implemented concept traps cover the documented gaps: the ownership change that precedes the mint (Trap 2), the failed-attempt window before the drain (Trap 3), and the downstream lending protocol impact after the drain (Trap 4).
 
 None of these traps are alternatives to BridgeRouterGuard. They are complementary monitors watching different parts of the same attack surface. The Drosera model — same operator network, same consensus mechanism, independent `collect()` and `shouldRespond()` per trap — makes deploying all of them simultaneously straightforward. What changes per deployment is which on-chain state `collect()` reads and what invariant `shouldRespond()` evaluates. The operator infrastructure is shared.
 

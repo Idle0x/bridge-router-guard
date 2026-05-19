@@ -74,7 +74,7 @@ if (execGrowth > 0 && creditGrowth == 0) {
     return (true, abi.encode(execGrowth, uint256(0), uint256(0), uint256(0)));
 }
 ```
-→ [`src/core/BridgeRouterGuardTrap.sol`](./src/core/BridgeRouterGuardTrap.sol)
+→ [`src/core/BridgeRouterGuardTrap.sol`](../src/core/BridgeRouterGuardTrap.sol)
 
 Every withdrawal in the Multichain drain executed against zero validated inbound credit. The zero-backing hard trigger fires on the first sample that captures `executedWithdrawals` growth, independent of magnitude. The threshold path (`drainDelta > VAULT_DRAIN_THRESHOLD`) is never reached because the invariant fires earlier. Any bridge architecture where a lockup contract holds reserves, a validation layer authorizes releases, and that validation layer can be bypassed off-chain will produce this identical signal. The mechanism of compromise varies; the accounting mismatch does not. This structural parallel applies directly to Orbit Chain ([002](./002-orbit-chain-dec-2023.md)), Force Bridge ([004](./004-force-bridge-jun-2025.md)), and Ronin.
 
@@ -102,7 +102,7 @@ if (execGrowth > 0 && creditGrowth == 0) {
     return (true, abi.encode(execGrowth, uint256(0), uint256(0), uint256(0)));
 }
 ```
-→ [`src/core/BridgeRouterGuardTrap.sol`](./src/core/BridgeRouterGuardTrap.sol)
+→ [`src/core/BridgeRouterGuardTrap.sol`](../src/core/BridgeRouterGuardTrap.sol)
 
 **Vector 4 — reserve reconciliation (secondary):**
 
@@ -186,7 +186,7 @@ The zero-backing trigger covers this attack correctly. No modification to the ex
 
 **Beyond BridgeRouterGuard:**
 
-The 46-day degradation window before the drain demonstrates the need for an operational liveness monitor. A separate trap reading bridge throughput metrics — last confirmed cross-chain transaction timestamp, ratio of pending to confirmed messages, relay failure rate — could flag infrastructure distress weeks before funds move. This concept is implemented in [`PreAttackMonitorTrap`](./src/concepts/PreAttackMonitorTrap.sol), grounded in the Force Bridge ([004](./004-force-bridge-jun-2025.md)) case which provides a closer on-chain analog through failed privileged function calls.
+The 46-day degradation window before the drain demonstrates the need for an operational liveness monitor. A separate trap reading bridge throughput metrics — last confirmed cross-chain transaction timestamp, ratio of pending to confirmed messages, relay failure rate — could flag infrastructure distress weeks before funds move. This concept is implemented in [`PreAttackMonitorTrap`](../src/concepts/PreAttackMonitorTrap.sol), grounded in the Force Bridge ([004](./004-force-bridge-jun-2025.md)) case which provides a closer on-chain analog through failed privileged function calls.
 
 ---
 

@@ -102,7 +102,7 @@ function mintPhantom(uint256 amount) external {
     emit PhantomMinted(amount);
 }
 ```
-→ [`src/mocks/core/MockTokenGateway.sol`](./src/mocks/core/MockTokenGateway.sol)
+→ [`src/mocks/core/MockTokenGateway.sol`](../src/mocks/core/MockTokenGateway.sol)
 
 Phase 1 fires the zero-backing hard trigger. Phase 2 fires both the zero-backing path and the threshold path for Vector 2. Any bridge using the Polytope Labs `MerkleMountainRange` library or similar proof verification architectures that grant admin/minting rights in a single step produces this identical signal. The `ChangeAssetAdmin` pattern mirrors the IoTeX ([006](./006-iotex-iotube-feb-2026.md)) upgrade-then-takeover sequence: different root cause mechanism, same observable downstream consequence of permanent admin control in the wrong hands.
 
@@ -127,7 +127,7 @@ if (execGrowth > 0 && creditGrowth == 0) {
     return (true, abi.encode(execGrowth, uint256(0), uint256(0), uint256(0)));
 }
 ```
-→ [`src/core/BridgeRouterGuardTrap.sol`](./src/core/BridgeRouterGuardTrap.sol)
+→ [`src/core/BridgeRouterGuardTrap.sol`](../src/core/BridgeRouterGuardTrap.sol)
 
 The threshold check is never reached for Phase 1. The zero-backing path evaluates first and returns unconditionally.
 
@@ -141,7 +141,7 @@ if (mintGrowth > 0 && authGrowth == 0) {
     return (true, abi.encode(uint256(0), mintGrowth, uint256(0), uint256(0)));
 }
 ```
-→ [`src/core/BridgeRouterGuardTrap.sol`](./src/core/BridgeRouterGuardTrap.sol)
+→ [`src/core/BridgeRouterGuardTrap.sol`](../src/core/BridgeRouterGuardTrap.sol)
 
 ---
 
@@ -233,7 +233,7 @@ The zero-backing trigger correctly covers both phases. The threshold path is sec
 **Beyond BridgeRouterGuard:**
 Both the IoTeX case ([006](./006-iotex-iotube-feb-2026.md)) and this case independently produce the same intermediate step before phantom minting: an admin change on a bridge token contract. A monitor reading `owner()` on each bridged token contract fires in the same block as the `ChangeAssetAdmin` execution — before the first phantom mint is submitted, with the attacker holding admin rights but no minted tokens yet.
 
-This concept is implemented as [`OwnershipMonitorTrap`](./src/concepts/OwnershipMonitorTrap.sol) and tested in [`test/concepts/OwnershipMonitor.t.sol`](./test/concepts/OwnershipMonitor.t.sol). See [010 — Architecture and Extensions](./010-architecture-and-extensions.md#trap-1--ownership-state-monitor) for the full design and validation tests. The convergence of two independent exploit paths on the same intermediate on-chain state change reinforces the architectural case for this monitor.
+This concept is implemented as [`OwnershipMonitorTrap`](../src/concepts/OwnershipMonitorTrap.sol) and tested in [`test/concepts/OwnershipMonitor.t.sol`](../test/concepts/OwnershipMonitor.t.sol). See [010 — Architecture and Extensions](./010-architecture-and-extensions.md#trap-2--ownership-state-monitor) for the full design and validation tests. The convergence of two independent exploit paths on the same intermediate on-chain state change reinforces the architectural case for this monitor.
 
 ---
 

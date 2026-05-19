@@ -79,7 +79,7 @@ if (execGrowth > 0 && creditGrowth == 0) {
     return (true, abi.encode(execGrowth, uint256(0), uint256(0), uint256(0)));
 }
 ```
-→ [`src/core/BridgeRouterGuardTrap.sol`](./src/core/BridgeRouterGuardTrap.sol)
+→ [`src/core/BridgeRouterGuardTrap.sol`](../src/core/BridgeRouterGuardTrap.sol)
 
 The ETH bulk drain at ~20:00 UTC grows `executedWithdrawals` against `validatedInboundCredits = 0`. The zero-backing hard trigger fires immediately on the first sample capturing this growth. The remaining four bulk streams — USDT ($30M), USDC ($10M), DAI ($10M), WBTC ($9.8M), totaling ~$60.2M — remain in the vault at the moment of trigger. Any multisig-controlled bridge vault where key compromise enables direct asset withdrawal without smart contract validation produces this identical signal. The threshold for compromise varies across protocols (Ronin 5-of-9, Harmony 2-of-5, Orbit 7-of-10), but the on-chain accounting mismatch is structurally identical to Multichain ([001](./001-multichain-jul-2023.md)).
 
@@ -107,7 +107,7 @@ if (execGrowth > 0 && creditGrowth == 0) {
     return (true, abi.encode(execGrowth, uint256(0), uint256(0), uint256(0)));
 }
 ```
-→ [`src/core/BridgeRouterGuardTrap.sol`](./src/core/BridgeRouterGuardTrap.sol)
+→ [`src/core/BridgeRouterGuardTrap.sol`](../src/core/BridgeRouterGuardTrap.sol)
 
 The probe transactions at sub-cent amounts are also `execGrowth > 0, creditGrowth == 0` in principle, but they fall below the precision at which ERC20 accounting registers meaningful movement. The first meaningful trigger is the ETH bulk drain. Vector 4 serves as the backstop for counter-bypass variants where balance drops occur without corresponding execution counter increments.
 
@@ -191,7 +191,7 @@ Vector 1 correctly covers this attack. The production consideration is identical
 
 **Beyond BridgeRouterGuard:**
 
-The 4-hour structured probe window — multiple small withdrawals across five asset types testing key access — is a distinguishable signal from normal bridge activity. Combined with Force Bridge's ([004](./004-force-bridge-jun-2025.md)) 6-hour failed-attempt window, these two cases demonstrate the need for a pre-attack window monitor that fires before any bulk drain. The concept is implemented and tested as [`PreAttackMonitorTrap`](./src/concepts/PreAttackMonitorTrap.sol). See [010 — Architecture and Extensions](./010-architecture-and-extensions.md#trap-2--pre-attack-window-monitor) for the precise design and validation tests.
+The 4-hour structured probe window — multiple small withdrawals across five asset types testing key access — is a distinguishable signal from normal bridge activity. Combined with Force Bridge's ([004](./004-force-bridge-jun-2025.md)) 6-hour failed-attempt window, these two cases demonstrate the need for a pre-attack window monitor that fires before any bulk drain. The concept is implemented and tested as [`PreAttackMonitorTrap`](../src/concepts/PreAttackMonitorTrap.sol). See [010 — Architecture and Extensions](./010-architecture-and-extensions.md#trap-3--pre-attack-window-monitor) for the precise design and validation tests.
 
 ---
 

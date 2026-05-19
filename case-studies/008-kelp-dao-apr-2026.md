@@ -106,7 +106,7 @@ function validateWithdrawal(uint256 amount, bytes32 proofHash) external {
     executedMessages++; // Both increment together.
 }
 ```
-→ [`src/mocks/core/MockMessageValidator.sol`](./src/mocks/core/MockMessageValidator.sol)
+→ [`src/mocks/core/MockMessageValidator.sol`](../src/mocks/core/MockMessageValidator.sol)
 
 The oracle check is the layer that catches the Kelp exploit at the source-chain level. The oracle never saw a real deposit event. If the validator had checked the oracle honestly, the credit would never have been registered and the withdrawal would have failed. The poisoned DVN bypassed the oracle check along with everything else — but the consequence remains a `validatedInboundCredits = 0` state. Vector 1 catches this correctly.
 
@@ -123,7 +123,7 @@ if (execGrowth > 0 && creditGrowth == 0) {
     return (true, abi.encode(execGrowth, uint256(0), uint256(0), uint256(0)));
 }
 ```
-→ [`src/core/BridgeRouterGuardTrap.sol`](./src/core/BridgeRouterGuardTrap.sol)
+→ [`src/core/BridgeRouterGuardTrap.sol`](../src/core/BridgeRouterGuardTrap.sol)
 
 ---
 
@@ -233,7 +233,7 @@ The vectors that fire (1, 2, 4) correctly detect the on-chain consequence. No mo
 **Beyond BridgeRouterGuard:**
 The ~6-hour gap between DVN failover onto poisoned endpoints and the drain represents a window where the DVN operated on falsified data. A separate trap monitoring `EndpointV2` for DVN attestation frequency and latency per OApp pathway — firing if patterns deviate significantly from baseline in ways consistent with endpoint failover — would target the infrastructure precondition rather than the execution consequence. Whether failover-induced attestation changes are distinguishable from normal DVN maintenance requires empirical testing against real attestation traffic. This concept is explored in [010 — Architecture and Extensions](./010-architecture-and-extensions.md#trap-4--dvn-attestation-liveness-monitor).
 
-The downstream Aave-style consequence (stolen collateral concentration in a lending pool) is independently detectable. The [`PositionMonitorTrap`](./src/concepts/PositionMonitorTrap.sol) demonstrates this pattern. See [010](./010-architecture-and-extensions.md#trap-3--position-monitor) for the design and validation tests.
+The downstream Aave-style consequence (stolen collateral concentration in a lending pool) is independently detectable. The [`PositionMonitorTrap`](../src/concepts/PositionMonitorTrap.sol) demonstrates this pattern. See [010](./010-architecture-and-extensions.md#trap-4--position-monitor) for the design and validation tests.
 
 ---
 
