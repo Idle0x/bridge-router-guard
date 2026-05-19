@@ -84,7 +84,7 @@ response:         pause the OFT bridge pending human review
 Two exploits via entirely different root causes — a compromised upgrade key and a forged MMR proof — both produced the same intermediate step before any phantom minting occurred: admin control over a bridge token contract was transferred to an attacker-controlled address. This intermediate step is observable in the same block it occurs. BridgeRouterGuard fires on the phantom mint. The ownership monitor fires on the transfer, before the first mint is submitted.
 
 **Implementation:** [`src/concepts/OwnershipMonitorTrap.sol`](../src/concepts/OwnershipMonitorTrap.sol)  
-**Tests:** [`test/concepts/OwnershipMonitor.t.sol`](../test/concepts/OwnershipMonitor.t.sol)
+**Tests:** [`test/concepts/ConceptTraps.t.sol`](../test/concepts/ConceptTraps.t.sol)
 
 ```solidity
 // OwnershipMonitorTrap.collect()
@@ -120,7 +120,7 @@ struct CollectOutput {
 Force Bridge exhibited six hours of failed privileged function calls from a non-authorized address before the first successful drain. Orbit Chain exhibited four hours of structured probe transactions confirming key access across five asset types. Both produced on-chain signals before any funds moved. BridgeRouterGuard has no mismatch to evaluate during these windows. A pre-attack window monitor is the appropriate detection primitive for this phase.
 
 **Implementation:** [`src/concepts/PreAttackMonitorTrap.sol`](../src/concepts/PreAttackMonitorTrap.sol)  
-**Tests:** [`test/concepts/PreAttackMonitor.t.sol`](../test/concepts/PreAttackMonitor.t.sol)
+**Tests:** [`test/concepts/ConceptTraps.t.sol`](../test/concepts/ConceptTraps.t.sol)
 
 ```solidity
 // PreAttackMonitorTrap.collect()
@@ -172,7 +172,7 @@ The scope boundary between BridgeRouterGuard and PreAttackMonitorTrap is validat
 After the Kelp drain, the attacker deposited 116,500 stolen rsETH into Aave V3 as collateral and borrowed ~$236M WETH. This produced a detectable downstream signal in the lending protocol: a sudden large collateral deposit of a bridge token alongside a utilization spike. BridgeRouterGuard monitors bridge contracts and has no visibility into lending pool collateral composition. A position monitor watching the lending pool catches the downstream consequence of the bridge exploit.
 
 **Implementation:** [`src/concepts/PositionMonitorTrap.sol`](../src/concepts/PositionMonitorTrap.sol)  
-**Tests:** [`test/concepts/PositionMonitor.t.sol`](../test/concepts/PositionMonitor.t.sol)
+**Tests:** [`test/concepts/ConceptTraps.t.sol`](../test/concepts/ConceptTraps.t.sol)
 
 ```solidity
 // PositionMonitorTrap.collect()

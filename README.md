@@ -313,9 +313,9 @@ forge test -vv
 | [`test/core/AdversarialAttack.t.sol`](./test/core/AdversarialAttack.t.sol) | Adversarial: threshold gaming, chunked drains, cold start, counter reset |
 | [`test/core/FuzzAndEdgeCases.t.sol`](./test/core/FuzzAndEdgeCases.t.sol) | Property: balanced counters never trigger; super-threshold always triggers |
 | [`test/core/ResponseAuth.t.sol`](./test/core/ResponseAuth.t.sol) | Auth: operator access control, two-step ownership, cooldown boundary, payload semantics |
-| [`test/concepts/OwnershipMonitor.t.sol`](./test/concepts/OwnershipMonitor.t.sol) | Admin/implementation change detection |
-| [`test/concepts/PreAttackMonitor.t.sol`](./test/concepts/PreAttackMonitor.t.sol) | Failed privileged call accumulation |
-| [`test/concepts/PositionMonitor.t.sol`](./test/concepts/PositionMonitor.t.sol) | Bridge-token collateral concentration in lending pool |
+| [`test/concepts/ConceptTraps.t.sol`](./test/concepts/ConceptTraps.t.sol) | Admin/implementation change detection |
+| [`test/concepts/ConceptTraps.t.sol`](./test/concepts/ConceptTraps.t.sol) | Failed privileged call accumulation |
+| [`test/concepts/ConceptTraps.t.sol`](./test/concepts/ConceptTraps.t.sol) | Bridge-token collateral concentration in lending pool |
 
 **Fuzz results:**
 
@@ -440,9 +440,7 @@ bridge-router-guard/
 │   │   ├── FuzzAndEdgeCases.t.sol
 │   │   └── ResponseAuth.t.sol
 │   ├── concepts/
-│   │   ├── OwnershipMonitor.t.sol
-│   │   ├── PreAttackMonitor.t.sol
-│   │   └── PositionMonitor.t.sol
+│   │   └── ConceptTraps.t.sol       # Merged suite: Ownership, Pre-Attack, Position monitors
 │   ├── attack/
 │   │   └── LiveHoodiExploit.s.sol
 │   └── utils/

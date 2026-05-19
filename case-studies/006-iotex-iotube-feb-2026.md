@@ -205,7 +205,7 @@ An ownership state vector could read `TokenSafe.owner()` and `MintPool.owner()` 
 **Beyond BridgeRouterGuard:**
 The malicious upgrade is detectable via `Upgraded(address indexed implementation)` events. A separate trap reading `IProxy(VALIDATOR).implementation()` on each block and firing if the implementation address changes to anything outside a known-good set would trigger in the same block as the malicious upgrade — before the ownership transfer, before the drain, before the mint.
 
-This concept is implemented as [`OwnershipMonitorTrap`](../src/concepts/OwnershipMonitorTrap.sol) and tested in [`test/concepts/OwnershipMonitor.t.sol`](../test/concepts/OwnershipMonitor.t.sol). The Hyperbridge case ([007](./007-hyperbridge-apr-2026.md)) independently arrived at the same concept from a different attack path — forged MMR proof rather than compromised upgrade key — reinforcing that admin-change monitoring is the appropriate layer for this attack class. See [010 — Architecture and Extensions](./010-architecture-and-extensions.md#trap-2--ownership-state-monitor) for the full design.
+This concept is implemented as [`OwnershipMonitorTrap`](../src/concepts/OwnershipMonitorTrap.sol) and tested in [`test/concepts/ConceptTraps.t.sol`](../test/concepts/ConceptTraps.t.sol). The Hyperbridge case ([007](./007-hyperbridge-apr-2026.md)) independently arrived at the same concept from a different attack path — forged MMR proof rather than compromised upgrade key — reinforcing that admin-change monitoring is the appropriate layer for this attack class. See [010 — Architecture and Extensions](./010-architecture-and-extensions.md#trap-2--ownership-state-monitor) for the full design.
 
 ---
 
