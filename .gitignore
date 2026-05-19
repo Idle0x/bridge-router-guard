@@ -18,3 +18,4 @@ coverage.json
 .env
 out/
 cache/
+*.save
