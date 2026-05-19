@@ -1,24 +1,10 @@
 # [Protocol Name] — [Month Year]
 
-**Loss:** $[X]M confirmed · $[Y]M total exposure (if follow-on losses existed)
-**Date:** [Full date, UTC where known]
-**Vectors triggered:** [1 / 2 / 3 / combination]
-**Trap verdict:** [one of the following]
-  - `CAUGHT (pre-drain)`: trap fires before the majority of losses complete
-  - `CAUGHT (post-drain)`: initial loss completes in one block; all follow-on damage preventable
-  - `PARTIAL`: trap fires but signal arrives too late or from the wrong contracts for meaningful containment
-  - `NOT CAUGHT`: exploit is structurally outside the trap's detection surface
-
----
-
-## Production Assumption
-
-This analysis assumes `min_number_of_operators = 3` as the production baseline.
-The testnet deployment uses `min_number_of_operators = 1` as a PoC constraint,
-documented in `drosera.toml`. A 3-operator quorum requires consensus across
-independent nodes before `snapFreeze()` can execute. In the response timelines
-below, this adds one block of latency in the worst case (~12 seconds), which
-does not change any verdict in this analysis.
+**Loss:** $[X]M confirmed · $[Y]M total exposure (if follow-on losses existed)  
+**Date:** [Full date, UTC where known]  
+**Root Cause:** [Specific vulnerability / failure mode / compromise mechanism]  
+**Primary Vector:** [Vector 1 / Vector 2 / Vector 3 / Vector 4 / combination / None]  
+**Trap verdict:** `CAUGHT (pre-drain)` | `CAUGHT (post-drain)` | `PARTIAL` | `NOT CAUGHT`
 
 ---
 
@@ -27,17 +13,17 @@ does not change any verdict in this analysis.
 - What the protocol was and what it did
 - Exact date and UTC time of the exploit (or best known)
 - Total confirmed loss and total exposure if follow-on attempts existed
-- One paragraph — enough context to understand what follows, nothing more
+- One paragraph focusing on the structural failure mode relevant to bridge accounting invariants. No narrative fluff.
 
 ---
 
 ## 2. Technical Root Cause
 
-- The specific vulnerability: contract, function, or configuration that failed
+- The specific vulnerability: contract, function, configuration, or key management failure
+- Explicit mapping to which bridge component failed (vault, gateway, router, validation layer, or off-chain infrastructure)
 - The exact attack sequence, step by step, in chronological order
 - Key transaction hashes and block numbers where confirmed on-chain
-- Attribution if confirmed (e.g. Lazarus Group, compromised key, etc.)
-- No speculation. Only what post-mortems, audits, or on-chain data confirm.
+- Attribution if confirmed (e.g., Lazarus Group, compromised key, insider). No speculation. Only what post-mortems, audits, or on-chain data confirm.
 
 ---
 
@@ -45,59 +31,48 @@ does not change any verdict in this analysis.
 
 The bridge between the real exploit and the trap's detection logic.
 
-- What EVM state looked like before, during, and after the attack
-- Which state variables moved, by how much, across how many blocks
-- Whether the signal was single-block atomic or multi-block progressive
-- What was visible on-chain vs. what happened off-chain before any transaction landed
+- Map state changes explicitly to v3 `CollectOutput` fields: `executedWithdrawals`, `validatedInboundCredits`, `cumulativeMinted`, `validatedMintAuthorizations`, `executedMessages`, `gatewayValidatedMessages`, `vaultTokenBalance`
+- Show exact delta computation per vector: `execGrowth - creditGrowth`, `mintGrowth - authGrowth`, `balanceDrop - execGrowth`, or `executedMessages - gatewayValidatedMessages`
+- Clarify whether the signal was single-block atomic or multi-block progressive
+- Distinguish what was visible on-chain vs. what happened off-chain before any transaction landed
 
-This section determines whether and when each vector fires. Everything in
-sections 4 and 5 follows from what is established here.
+This section determines whether and when each vector fires. Everything in sections 4 and 5 follows from what is established here.
 
 ---
 
 ## 4. Design Envelope Assessment
 
-Was this exploit within the trap's detection surface?
+Was this exploit within the trap's detection surface? Write three cohesive, declarative paragraphs:
 
-**A. Was the trap designed for this environment?**
-State clearly whether the protocol architecture is the class BridgeRouterGuard
-was built to monitor. If the root cause is at a layer the trap does not read,
-say so directly.
+1. **Environment alignment:** State clearly whether the protocol architecture matches the class BridgeRouterGuard was built to monitor. If the root cause is at a layer the trap does not read, state it directly.
+2. **Signal production:** Even if the root cause is off-chain, document whether the exploit produces an on-chain state change the trap can read. Distinguish between "not designed for the root cause" and "not designed for the consequence."
+3. **Architectural parallels:** Given the detected signal profile, describe the protocol characteristics that make this trap applicable. Observable architecture traits only — no predictions or speculation.
 
-**B. Does the on-chain consequence produce the detectable signal?**
-Even if the root cause is off-chain, the exploit may still produce an on-chain
-state change the trap can read. Distinguish between "not designed for the root
-cause" and "not designed for the consequence."
-
-**C. Which similar protocols or architectures would produce the same signal?**
-Given the detected signal profile, describe the protocol characteristics that
-make this trap applicable. Observable architecture traits only — not predictions.
+Do not use Q&A formatting. State facts directly.
 
 ---
 
 ## 5. Trap Vector Mapping
 
-For each of the three vectors: does it fire, when, and at what magnitude?
+For each of the four vectors: does it fire, when, and at what magnitude?
 
 **Symbol key:**
 | Symbol | Meaning |
 |---|---|
-| ✅ | Fires — signal detected, threshold exceeded |
+| ✅ | Fires — signal detected, threshold exceeded or zero-backing invariant met |
 | ❌ | Does not fire — signal absent, this attack produces no output on this vector |
 | ⚠️ | Signal present but below threshold, or only a partial architectural match |
 | — | Out of scope — this vector monitors a different attack surface entirely |
 
-For each vector that fires: cite the exact code path, state the threshold
-and actual signal magnitude, state how many blocks after the drain it fires.
+For each vector that fires: cite the exact v3 code path (`src/core/BridgeRouterGuardTrap.sol`), state the threshold vs actual signal magnitude, and state how many blocks after the drain it fires. Document intentional bypasses explicitly (e.g., Vector 2 partial authorization suppression).
 
-For each vector that does NOT fire: state precisely why —
-signal not present, wrong chain, wrong architecture, below threshold, etc.
+For each vector that does NOT fire: state precisely why — signal not present, wrong chain, wrong architecture, below threshold, or validator deceived rather than bypassed.
 
 ---
 
 ## 6. Simulated Response Timeline
 
-All times UTC. Block time assumption stated upfront.
+All times UTC. Block time assumption stated upfront. Timing reflects operator consensus latency, not deterministic contract guarantees.
 
 Format:
 ```
@@ -108,24 +83,24 @@ Format:
 
 End with:
 ```
-Trap exposure window:   [X seconds]
+Trap exposure window:   [X seconds/blocks]
 Actual exposure window: [Y minutes]
-Compression factor:     [Z×]
 ```
+
+Do not claim fixed containment timings. Frame latency around operator aggregation, P2P consensus, and on-chain cooldown state.
 
 ---
 
 ## 7. Damage Assessment
 
-| | Without Trap | With Trap (min_operators = 3) |
+| | Without Trap | With Trap (production baseline) |
 |---|---|---|
-| Initial loss | $X | $X (unpreventable if single-block) |
+| Trigger event (initial loss) | $X | $X (unavoidable if single-block) |
 | Follow-on losses | $Y | $0 or reduced |
-| Total exposure window | X min | ~Y seconds |
-| **Total preventable** | — | **$[estimate with basis]** |
+| Total exposure window | X min | ~Y seconds/blocks |
+| **Total preventable** | — | **$[estimate with on-chain basis]** |
 
-Follow with one short paragraph explaining the reasoning behind any figure
-that is not directly confirmed on-chain.
+Follow with one short paragraph explaining the reasoning behind any figure that is not directly confirmed on-chain. Explicitly separate the unavoidable trigger event from preventable follow-on damage. Label estimates as `[estimate]`.
 
 ---
 
@@ -137,19 +112,24 @@ Specific gaps that apply to THIS exploit only — not the generic README limitat
 - Specific architectural features of this protocol the trap cannot read
 - Any edge case where the trap would have fired late, incorrectly, or not at all
 - Single-block atomicity constraint if it applies here
+- Threshold strictness or partial-authorization bypass if materially relevant to this case
+
+Do not repeat global design envelope boundaries. Keep this strictly case-specific.
 
 ---
 
 ## 9. Extending the Detection Surface
 
 **Within BridgeRouterGuard:**
-Could a modified threshold or additional state variable have caught the root cause?
-Is that state variable on-chain and readable?
+Could a modified threshold or additional state variable have caught the root cause? Is that state variable on-chain and readable? State engineering requirements plainly.
 
-**Beyond BridgeRouterGuard (new trap pattern):**
-If the gaps in section 8 require a different trap entirely, describe what it
-would monitor. Name the state variable, the invariant, and the response.
-Keep this concrete and grounded in what is actually observable on-chain.
+**Beyond BridgeRouterGuard:**
+If the gaps in section 8 require a different trap entirely, describe what it would monitor. Name the state variable, the invariant, and the response. Ground extensions in implemented concept traps where applicable:
+- [`OwnershipMonitorTrap`](./src/concepts/OwnershipMonitorTrap.sol)
+- [`PreAttackMonitorTrap`](./src/concepts/PreAttackMonitorTrap.sol)
+- [`PositionMonitorTrap`](./src/concepts/PositionMonitorTrap.sol)
+
+Link to [010 — Architecture and Extensions](./010-architecture-and-extensions.md) for full designs. Keep this concrete and grounded in what is actually observable on-chain.
 
 ---
 
@@ -157,4 +137,20 @@ Keep this concrete and grounded in what is actually observable on-chain.
 
 - Primary sources only where available
 - Format: [Publication/Source]: [Title] — [URL]
+- Include on-chain transaction links and official post-mortem reports where applicable
 - Figures cited without a source must be labeled `[estimate]` inline
+
+---
+
+### 🔹 Key Improvements Applied
+- Removed `Production Assumption` section entirely (operator/quorum latency is documented globally in README)
+- Added `Root Cause` and `Primary Vector` header fields
+- Flattened Section 4 from Q&A format into direct analytical prose
+- Expanded vector mapping to 4 vectors with explicit code citation and threshold-vs-signal guidance
+- Updated damage table to explicitly separate unavoidable trigger events from preventable follow-on losses
+- Removed deterministic timing claims; framed containment around operator consensus latency
+- Tightened Section 8 to case-specific gaps only, eliminating redundancy with README
+- Grounded Section 9 extensions in v3 concept traps with direct file links
+- Enforced strictly declarative, forensic tone throughout all instructional text
+
+This template now matches the exact standard used in the upgraded case studies and will produce consistent, auditor-ready documentation for any future incident analysis. Ready for archival or immediate use.

@@ -38,7 +38,7 @@ cooldown_period_blocks = 33
 
 # TESTNET ONLY: min_number_of_operators = 1.
 # A 1-operator setup means a single compromised or misbehaving operator can
-# pause the entire protocol unilaterally. This is acceptable for a PoC where
+# pause the entire protocol unilaterally. This is acceptable for a controlled testnet environment where
 # the deployer IS the operator and the goal is demonstrating the detection pipeline.
 #
 # PRODUCTION REQUIREMENT: set to >= 3.
@@ -48,14 +48,9 @@ cooldown_period_blocks = 33
 # change any verdict.
 min_number_of_operators = 1
 max_number_of_operators = 5
-
-# private_trap = true restricts which operators may join.
-# whitelist contains the deployer's address.
-# Update whitelist with the actual operator addresses for multi-operator testnet runs.
 private_trap = true
 whitelist    = ["0xcf75bea7a11eb0a764dc85def2f36c3ed826ae59", "0xEd9EDd8586b20524CafA4F568413C504C9B03172", "0x9d059eFAF63a6B964e6887537053b192510EfD88"]
 
-# Trap address — set after `drosera apply`.
 address      = "0x1D880D83Ce107C6961495Ef767b8E4099A94F72E"
 
 # ─── Alert configuration ──────────────────────────────────────────────────────
@@ -70,24 +65,12 @@ alert_output_sig = "decodeAlertOutput"
 #
 # PATH 1 — Drosera native Slack integration:
 #   Delivers alerts directly to a Slack channel via Drosera's built-in connector.
-#   Requires the Slack workspace to be connected in the Drosera dashboard.
-#   Use a channel ID (e.g. C0123456789) rather than a channel name for reliability.
-#   Channel names can be renamed; IDs cannot.
 slack = { slack_channel = "C0AT77ZV74H" }   # replace with actual channel ID
 
 # PATH 2 — Custom webhook (alert-server.js):
 #   If you want the full decoded telemetry card with drain/mint/exec/reserve deltas,
 #   configure a custom webhook pointing to your running alert-server.js instance.
-#   Uncomment and fill in the URL and shared secret.
 #   The server must be reachable from the Drosera relay network.
 # webhook = { webhook_url = "https://your-server.com/api/alerts", webhook_headers = { "x-alert-secret" = "your-secret" }}
 
 # removed webhook URL due to a drosera apply error "can not contain localhost in production"
-
-# NOTE: Do NOT commit webhook URLs or secrets to the repository.
-# Store them in environment variables and reference via your deployment pipeline.
-#
-# PATH SELECTION:
-#   If only Drosera native Slack is needed: keep `slack` line, comment out `webhook`.
-#   If only custom telemetry server: comment out `slack`, uncomment `webhook`.
-#   If both: both paths deliver alerts independently (additive, not exclusive).

@@ -1,316 +1,243 @@
 # 010 — Architecture and Extensions
 
-**What BridgeRouterGuard monitors, why it is designed as it is,
-where it reaches its limits, and what other trap designs would look like.**
+**What BridgeRouterGuard monitors, why it is designed as it is, where it reaches its limits, and what the four concept traps demonstrate about the detection surface beyond those limits.**
 
-This file draws on the eight case studies collectively. The observations here
-are grounded in what the cases actually revealed — not speculation about future
-attacks, but architectural implications of documented ones.
+This file documents the architectural decisions behind the v3 trap, the structural boundaries identified across eight case studies, and the concept traps built to address gaps outside the accounting mismatch detection surface. All concept traps described here are implemented, deployed to Hoodi testnet, and covered by dedicated test suites. Scope boundary demonstrations were executed as part of the testnet campaign.
 
 ---
 
 ## Why the Trap Is Designed the Way It Is
 
-BridgeRouterGuard monitors three specific state variables:
+BridgeRouterGuard enforces four accounting invariants across three bridge contracts:
 
-- `cumulativeWithdrawals` — cumulative outflow from the bridge reserve vault
-- `phantomMinted` — cumulative supply of tokens minted without a corresponding validated lock
-- `spoofedMessageExecuted` — boolean flag indicating an unauthorized router execution
+```
+executedWithdrawals     == validatedInboundCredits      (Vector 1)
+cumulativeMinted        == validatedMintAuthorizations   (Vector 2)
+executedMessages        == gatewayValidatedMessages      (Vector 3)
+vaultTokenBalance       >= executedWithdrawals           (Vector 4)
+```
 
-These three were chosen because they are the observable on-chain consequences of
-execution without validation — the invariant that all eight case studies share.
-The design choices behind them are not arbitrary.
+Every design decision follows from these invariants and from the constraint that `collect()` is a `view` function and `shouldRespond()` is `pure`. No state writes. No external calls in `shouldRespond()`. No off-chain data dependencies. The trap is stateless; the operator runtime handles all temporal mechanics.
 
-**Why cumulative counters, not event logs:**
-Cumulative counters are readable as pure view calls. `collect()` is a view function
-— it cannot process event logs or access historical state. Monitoring cumulative
-state rather than individual transactions means the trap naturally aggregates across
-whatever execution pattern the attacker uses: single large drain, chunked drains,
-parallel multi-asset drains. All of them accumulate into the same counter.
+**Why separate counters rather than a single net value:**
+A single net outflow counter collapses execution and validation into one number. If the protocol adds correctly, the counter appears normal. If execution exceeds validation, the counter wraps or goes negative, producing no clean mismatch signal. Separate counters for execution and validation make the gap directly computable: `execGrowth - creditGrowth`. The gap is the invariant violation.
 
-**Why a velocity window rather than a single-block check:**
-Single-block thresholds catch burst attacks but miss slow-drain attacks. Window-based
-velocity detection catches both: a single massive transaction triggers the burst
-detector; a series of sub-threshold transactions accumulates in the window. The
-7-block window was chosen to balance detection latency against false-positive risk.
-Shorter windows are more sensitive but more susceptible to noise. Longer windows
-allow more damage before firing.
+**Why the zero-backing path fires before the threshold path:**
+The threshold path (`drainDelta > VAULT_DRAIN_THRESHOLD`) catches large partial-backing violations where some credit exists but execution outpaced it beyond configured tolerance. The zero-backing path catches any execution against zero credit, regardless of amount. A 1 wei withdrawal with zero credit is still execution without validation. The threshold path never evaluates it; the zero-backing path catches it immediately. These are two distinct failure modes requiring two distinct checks.
 
-**Why three vectors rather than one:**
-Each vector corresponds to a different execution path for the same underlying attack.
-Vector 1 fires when the attacker drains a reserve (Multichain, Orbit Chain, Force
-Bridge). Vector 2 fires when the attacker mints unbacked tokens (IoTeX, Hyperbridge,
-Kelp). Vector 3 fires when the attacker executes a router call without gateway
-validation (CrossCurve, Kelp). A single-vector design would miss any case where
-the attack follows a different execution path. The three vectors together cover
-the full attack surface of the execution-without-validation pattern class.
+**Why the 7-block window lives in the operator runtime, not the contract:**
+`collect()` is `view` and `shouldRespond()` is `pure`. Neither can store state between calls. The 7-block trailing window is assembled by the operator runtime and passed in as the `bytes[] calldata data` array. The contract evaluates the window but does not maintain it. The operator handles history; the contract handles logic.
 
-**Why Vector 3 requires no history:**
-A forged router execution is a hard invariant violation — there is no legitimate
-scenario where `spoofedMessageExecuted` is true. A single unauthorized execution
-is one too many. Velocity history is irrelevant. This is the only case in the
-trap where the response fires with zero prior baseline.
+**Why `snapFreeze()` uses a 33-block cooldown enforced on-chain:**
+The cooldown prevents consecutive submissions during a sustained attack. An attacker continuously triggering the invariant cannot force repeated `snapFreeze()` calls that waste gas or interfere with recovery. The cooldown is enforced on-chain in `BridgeRouterGuardResponse.sol` rather than in the operator runtime, preventing bypass by misconfigured or malicious nodes. The 33-block (~396 second) duration allows human review while remaining short enough to catch a genuine second incident after expiry.
 
-**Why the trap does not fire in-line with user transactions:**
-The trap operates as a shadow monitor via Drosera's operator network, not as a
-contract modifier or reentrancy guard. In-line monitoring adds gas overhead to
-every user transaction and creates a dependency — if the monitor reverts, the user
-transaction reverts. Out-of-band shadow monitoring adds zero gas overhead to normal
-operations and can fail independently without affecting users.
+**Why Vector 4 is a balance check rather than a counter:**
+The three counter-based vectors only fire when execution counters move. An attacker bypassing execution counters entirely — using a token transfer path that does not update `executedWithdrawals` — produces zero counter movement and zero mismatch across Vectors 1, 2, and 3. Vector 4 reads `vaultTokenBalance` directly from the ERC20 token and compares it against `executedWithdrawals` growth. If the balance drops more than the counter grows, funds moved without accounting. The `directTokenTransfer()` path in `MockBridgeVault` and the `silentDrainCampaign` at block 2801682 validate this detection path on-chain.
 
 ---
 
 ## Where the Trap Reaches Its Limits
 
-The eight case studies reveal four structural limits. These are not design flaws —
-they are the known boundaries of a velocity-based out-of-band monitor.
+Four structural limits emerge from the case studies and the campaign. These are known boundaries of an on-chain accounting monitor, not design flaws.
 
-### 1. The first atomic transaction
+### 1. The trigger event is always lost
+The trap fires on the block containing the invariant violation. The transaction that produced that violation is already confirmed on-chain. A reactive monitor cannot prevent the transaction that generates its own detection signal. Containment value lies in what happens after the trigger event. For progressive drains (Multichain, Orbit Chain), the trigger event is a small fraction of total losses. For single-block drains with follow-on attempts (Kelp DAO), the trigger event is the largest single loss, but subsequent attempts are fully preventable.
 
-The trap fires on block N+1 after the drain. A single-block atomic attack completes
-before the first `collect()` call. This constraint is fundamental: on-chain monitors
-are reactive. The Kelp initial drain ($292M), the CrossCurve first chain drain
-($1.3M), and Hyperbridge Phase 2 mint ($237K realized) are all examples. The trap
-limits the damage window — it does not eliminate it.
+### 2. Sub-threshold partial-backing violations are intentional precision tradeoffs
+The threshold path fires when `drainDelta > VAULT_DRAIN_THRESHOLD`. Drains below threshold with partial backing are intentionally allowed through. This is a precision-over-recall design choice: a lower threshold catches more potential violations but also flags legitimate high-volume bridge activity. Campaign bypass confirmations at blocks 2801246, 2801259, and 2801264 demonstrate this tradeoff functioning as designed. The zero-backing path is exempt from this tradeoff and fires regardless of amount.
 
-The relevant question is not "can the trap stop the first transaction" but "how much
-damage occurs after the first transaction, and can the trap stop that?" For Multichain
-and Orbit Chain, the answer is most of the damage — because those attacks were
-progressive, multi-transaction drains where the first transaction was far from the
-last. For Kelp, the follow-on damage ($200M in two confirmed follow-up attempts)
-was fully stopped.
+### 3. Wrong attack surface — Socket Protocol
+Approval-draining attacks targeting distributed user wallet state produce no signal in any of the four accounting vectors. The bridge reserve is untouched. No counter moves. No monitored vault balance changes. This is a scope boundary, not a calibration problem. A circuit breaker on bridge reserves cannot catch approval-draining attacks against individual user wallets.
 
-### 2. Sub-threshold drains
-
-Static thresholds calibrated for large-scale bridge exploits create a gap at the
-bottom. Hyperbridge Phase 1 (245 ETH) and CrossCurve's per-chain losses (below
-1,000 ETH individually) are real losses that fall below the configured thresholds.
-
-This is not a trap failure — it is a threshold configuration problem. A production
-deployment monitoring Hyperbridge should use thresholds calibrated to Hyperbridge's
-baseline flow, not Multichain's. Dynamic thresholds derived from rolling baselines
-automatically right-size to each protocol's actual traffic. This is the upgrade
-documented in What's Next.
-
-### 3. Wrong attack surface (Socket)
-
-The Socket exploit drained distributed user wallet approvals, not a bridge reserve.
-No single readable counter captures this signal. This is a scope boundary, not a
-calibration problem. The trap was not designed for approval-draining attacks, and
-no threshold adjustment would change that.
-
-The Socket case is included in this analysis precisely because it is the correct
-counterexample. A case study set that only includes successes is not useful.
-
-### 4. Off-chain attack surface
-
-MPC key compromise (Multichain), deployer key compromise (Force Bridge), Validator
-key compromise (IoTeX), RPC poisoning with binary replacement (Kelp) — all of these
-are off-chain before any transaction hits the chain. The trap cannot detect the
-off-chain precondition; it detects the on-chain consequence. Six cases out of eight
-have off-chain root causes. The trap is designed for the consequence, not the cause.
+### 4. Off-chain root causes have no precursor signal
+MPC key compromise (Multichain), deployer key compromise (Force Bridge), Validator key compromise (IoTeX), RPC poisoning with binary replacement (Kelp) — all occur off-chain before any transaction reaches the chain. The trap detects the on-chain consequence. The compromise itself is invisible until funds move. Six of eight cases have off-chain root causes. In all six, the trap fires on the consequence correctly. Where on-chain precursors exist (Force Bridge's failed privileged calls, Orbit Chain's probe transactions), they require a different detection primitive.
 
 ---
 
-## What Other Traps Would Look Like
+## Trap 1 — Ownership State Monitor
 
-Four distinct trap concepts emerge from reading the eight section-9s as a group.
-Each addresses a gap that BridgeRouterGuard does not cover. None of these are
-speculative — each has at least two case studies providing independent evidence
-of need.
+**Evidence from:** [IoTeX ioTube (006)](./006-iotex-iotube-feb-2026.md) and [Hyperbridge (007)](./007-hyperbridge-apr-2026.md)
 
-### Trap 2 — Contract state ownership monitor
+Two exploits via entirely different root causes — a compromised upgrade key and a forged MMR proof — both produced the same intermediate step before any phantom minting occurred: admin control over a bridge token contract was transferred to an attacker-controlled address. This intermediate step is observable in the same block it occurs. BridgeRouterGuard fires on the phantom mint. The ownership monitor fires on the transfer, before the first mint is submitted.
 
-**Evidence from:** [IoTeX ioTube (006)](./006-iotex-iotube-feb-2026.md) and
-[Hyperbridge (007)](./007-hyperbridge-apr-2026.md)
+**Implementation:** [`src/concepts/OwnershipMonitorTrap.sol`](./src/concepts/OwnershipMonitorTrap.sol)  
+**Tests:** [`test/concepts/OwnershipMonitor.t.sol`](./test/concepts/OwnershipMonitor.t.sol)
 
-Two independent exploits via different root causes — a compromised upgrade key and a
-forged MMR proof — both produced the same intermediate step: admin control over a
-bridge token contract was transferred to an attacker address. Both section-9s
-independently arrived at the same proposed monitor.
-
-**What it would monitor:**
-
+```solidity
+// OwnershipMonitorTrap.collect()
+// Reads the current owner/implementation of each monitored contract.
+// Fires if either changes to an address outside the known-authorized set.
+struct CollectOutput {
+    uint8 schemaVersion;
+    address gatewayAdmin;        // MockUpgradeableGateway.owner()
+    address gatewayImpl;         // MockUpgradeableGateway.implementation()
+}
 ```
-collect():        reads owner() on each monitored bridge token contract
-shouldRespond():  fires if owner changes to any address outside known-authorized set
-response:         pause minting authority on the affected token contract
-```
+→ [`src/concepts/OwnershipMonitorTrap.sol`](./src/concepts/OwnershipMonitorTrap.sol)
 
-**Why it fires earlier than BridgeRouterGuard:**
-The ownership transfer happens in the same block as (or one block before) the
-phantom mint. A BridgeRouterGuard deployment fires on the mint. An ownership
-monitor fires on the transfer — before the first mint is submitted.
+`shouldRespond()` fires if either field changes to an address not in the authorized set. The response executes in the same block as the ownership change, before the attacker calls `mintPhantom()` or any equivalent function.
 
-**The constraint:**
-The trap must know the expected owner address. Legitimate upgrades require a brief
-pause for human review. For protocols that upgrade infrequently, this tradeoff is
-worth taking. The convergence of two independent cases on the same concept is the
-argument for implementing it.
+**Test coverage:**
+- Admin change to unauthorized address → fires immediately
+- Admin change to authorized address (legitimate upgrade) → no trigger
+- Implementation change to unauthorized address → fires immediately
+- Consecutive changes accumulate correctly
+- Cold start with no prior baseline → no trigger (bootstrap safety)
 
-### Trap 3 — Pre-attack window monitor
+**Convergence argument:** Two independent attack paths — compromised upgrade key and forged cryptographic proof — both produce the same observable intermediate state. A trap watching admin addresses is durable against both, and against any future attack that produces the same intermediate step regardless of the initial compromise vector.
 
-**Evidence from:** [Orbit Chain (002)](./002-orbit-chain-dec-2023.md) and
-[Force Bridge (004)](./004-force-bridge-jun-2025.md)
-
-Orbit Chain had a 4-hour structured probe window (micro-transactions confirming
-key access per asset) before any bulk drain. Force Bridge had a 6-hour window of
-failed privileged function calls before the successful drain. Both produced
-observable on-chain signals well before any funds moved.
-
-Force Bridge is the stronger case: the failed attempts were the exact same restricted
-function calls that later succeeded — actual drain attempts that reverted, not just
-probes. Six hours of failed `unlock()` calls from a non-authorized address is a
-specific, distinguishable signal.
-
-**What it would monitor (Force Bridge variant):**
-
-```
-collect():        reads count of failed calls to restricted functions
-                  (unlock(), release(), withdraw() with onlyOwner guard)
-                  from addresses outside the authorized signer set
-shouldRespond():  fires if N failed privileged calls occur within M blocks
-                  from a non-authorized address
-response:         pause the bridge and alert operators
-```
-
-**Why it is higher value than BridgeRouterGuard for this case:**
-Every dollar of the Force Bridge $3.7M loss is preventable if the pause fires
-during the failed-attempt window rather than after the successful drain. With
-BridgeRouterGuard, ~$1M is lost before the threshold is crossed. With a pre-attack
-window monitor, $0 would be lost — the bridge pauses during failed attempts.
-
-**The implementation constraint:**
-Most bridge contracts revert silently on unauthorized calls rather than emitting
-events or incrementing counters. Exposing a failed-attempt counter requires
-modifying the bridge contract or running an event-log monitor off-chain. The
-concept is viable; the implementation requires coordination with the protocol.
-
-### Trap 4 — Lifecycle-aware threshold adapter
-
-**Evidence from:** [Force Bridge (004)](./004-force-bridge-jun-2025.md) specifically;
-applies across all eight.
-
-Force Bridge was attacked one day after announcing its sunset. The wind-down
-announcement was the attack trigger — remaining TVL became a concentrated target
-the moment normal user withdrawals began. A bridge in wind-down mode processes
-minimal flow at lower volume. Static thresholds calibrated for normal operation
-are systematically too high for a protocol in this state.
-
-This is not a distinct trap — it is a configuration practice. Any deployment should
-reassess thresholds whenever the protocol's operational posture changes materially:
-launch, wind-down, major TVL growth or decline. A threshold appropriate for a
-bridge processing $500M/day is not appropriate for the same bridge processing $5M/day.
-
-**The mechanism:**
-Dynamic thresholds tracking rolling 7-day average outflow automatically right-size:
-- During normal operation: threshold reflects actual baseline, avoiding false positives
-- During wind-down: threshold tightens as volume decreases, becoming more sensitive exactly when the remaining TVL is most concentrated
-
-This is the oracle-backed dynamic threshold upgrade documented in the README's
-What's Next section. Force Bridge is its clearest proof of need.
-
-### Trap 5 — DVN attestation liveness monitor
-
-**Evidence from:** [Kelp DAO (008)](./008-kelp-dao-apr-2026.md) specifically
-
-The Kelp attack produced a ~6-hour window between DVN failover onto poisoned
-endpoints and the actual drain. During this window, the DVN was making decisions
-based on poisoned data for every query. Whether the resulting attestation pattern
-was detectably anomalous relative to baseline depends on empirical data.
-
-**What it would monitor:**
-
-```
-collect():        reads EndpointV2 for DVN attestation frequency and latency
-                  per OApp pathway
-shouldRespond():  fires if patterns deviate significantly from baseline —
-                  unusual gaps, confirmation spikes, latency changes
-                  consistent with failover onto different endpoints
-response:         pause the OFT bridge pending manual review
-```
-
-**The honest uncertainty:**
-Whether failover-induced attestation pattern changes are distinguishable from
-normal DVN maintenance events requires empirical testing against real attestation
-traffic. This is the most speculative of the four extensions. It is worth
-describing precisely because the Kelp case provides the most severe evidence of
-what happens when DVN infrastructure is compromised — but the detection mechanism
-requires validation before claiming it would reliably catch this class.
+**Tradeoff:** The trap must know the expected owner address. Legitimate upgrades produce a brief pause for human review. For protocols that upgrade infrequently, this tradeoff is acceptable. For protocols with frequent admin operations, a timelock-aware allowlist or governance-integrated approach is required.
 
 ---
 
-## How These Traps Work Together
+## Trap 2 — Pre-Attack Window Monitor
 
-A realistic production security stack for a major OFT bridge, informed by the
-eight cases, might combine:
+**Evidence from:** [Force Bridge (004)](./004-force-bridge-jun-2025.md) and [Orbit Chain (002)](./002-orbit-chain-dec-2023.md)
 
-**Layer 1 — BridgeRouterGuard (this implementation)**
-Fires on: reserve drainage, phantom minting, unauthorized router execution
-Timing: block N+1 after the drain or mint
-Covers: Multichain, Orbit Chain, Force Bridge (Phase 2), CrossCurve, IoTeX (Vector 1), Hyperbridge (Phase 2), Kelp
+Force Bridge exhibited six hours of failed privileged function calls from a non-authorized address before the first successful drain. Orbit Chain exhibited four hours of structured probe transactions confirming key access across five asset types. Both produced on-chain signals before any funds moved. BridgeRouterGuard has no mismatch to evaluate during these windows. A pre-attack window monitor is the appropriate detection primitive for this phase.
 
-**Layer 2 — Contract state ownership monitor**
-Fires on: admin transfer to unauthorized address
-Timing: same block as the ownership transfer — before any phantom mint is submitted
-Covers: IoTeX (upgrade → takeover), Hyperbridge (forged admin grant)
+**Implementation:** [`src/concepts/PreAttackMonitorTrap.sol`](./src/concepts/PreAttackMonitorTrap.sol)  
+**Tests:** [`test/concepts/PreAttackMonitor.t.sol`](./test/concepts/PreAttackMonitor.t.sol)
 
-**Layer 3 — Pre-attack window monitor**
-Fires on: N failed restricted function calls from non-authorized address within M blocks
-Timing: during the attacker's preparation phase, before any funds move
-Covers: Force Bridge (6-hour failed attempt window), Orbit Chain (4-hour probe window)
+```solidity
+// PreAttackMonitorTrap.collect()
+// Reads the count of failed privileged calls and the most recent
+// unauthorized caller from MockPrivilegedBridge.
+struct CollectOutput {
+    uint8 schemaVersion;
+    uint256 failedAttemptCount;
+    address lastUnauthorizedCaller;
+    uint256 lastAttemptBlock;
+}
+```
+→ [`src/concepts/PreAttackMonitorTrap.sol`](./src/concepts/PreAttackMonitorTrap.sol)
 
-**Layer 4 — DVN attestation liveness monitor** (higher uncertainty, higher value if it works)
-Fires on: statistical deviation from baseline attestation patterns consistent with failover
-Timing: during the infrastructure precondition phase, before any transaction
-Covers: Kelp (6-hour DVN poisoning window) — if the signal is distinguishable
+`shouldRespond()` fires if `failedAttemptCount` growth exceeds a configured threshold within the observation window, originating from an address outside the authorized signer set.
 
-**What each layer covers in the attack chain:**
+**Test coverage:**
+- N failed attempts within M blocks from unauthorized address → fires
+- Failed attempts below threshold → no trigger
+- Authorized calls do not increment `failedAttemptCount`
+- Ring buffer correctness for window-based rate detection
+- Cold start with no prior baseline → no trigger
+
+**Campaign demonstration (block 2801775):**
+```
+preAttackCampaign($PRIVILEGED_BRIDGE, 5)
+
+Transaction hashes (3 txs in same block):
+0x666910091398ac83a1e32f0f0e118df11bff10518b063024ad6466f0e47a9865
+0x9d0882e1ac7e6a0cddedb6459b01e21433cb6a50bd603a26ec72bc9c078ab71d
+0x6ae6ace20863d1687f79898a4bfd1004738c2cde51c71378adac23632a8bb085
+
+BridgeRouterGuard: shouldRespond = false (correct — no mismatch)
+MockPrivilegedBridge.failedAttemptCount: 0 → 5
+PreAttackMonitorTrap: fires (failedAttemptCount growth = 5 > threshold)
+```
+The scope boundary between BridgeRouterGuard and PreAttackMonitorTrap is validated on-chain.
+
+**Force Bridge quantification:** If deployed on Force Bridge, this trap would have fired approximately six hours before the successful drain, with zero dollars at risk. The entire $3.7M loss is preventable if containment executes during the failed-attempt window.
+
+**Implementation constraint:** Most bridge contracts revert silently on unauthorized calls rather than exposing a `failedAttemptCount` state variable. `MockPrivilegedBridge` exposes it by design. A production deployment requires the bridge contract to expose this counter, or an event-log indexer that feeds the counter to a readable on-chain variable. This is a protocol-side instrumentation requirement.
+
+---
+
+## Trap 3 — Position Monitor
+
+**Evidence from:** [Kelp DAO (008)](./008-kelp-dao-apr-2026.md)
+
+After the Kelp drain, the attacker deposited 116,500 stolen rsETH into Aave V3 as collateral and borrowed ~$236M WETH. This produced a detectable downstream signal in the lending protocol: a sudden large collateral deposit of a bridge token alongside a utilization spike. BridgeRouterGuard monitors bridge contracts and has no visibility into lending pool collateral composition. A position monitor watching the lending pool catches the downstream consequence of the bridge exploit.
+
+**Implementation:** [`src/concepts/PositionMonitorTrap.sol`](./src/concepts/PositionMonitorTrap.sol)  
+**Tests:** [`test/concepts/PositionMonitor.t.sol`](./test/concepts/PositionMonitor.t.sol)
+
+```solidity
+// PositionMonitorTrap.collect()
+// Reads collateral composition and utilization from MockLendingPool.
+struct CollectOutput {
+    uint8 schemaVersion;
+    uint256 bridgeTokenCollateralValue;
+    uint256 totalCollateralValue;
+    uint256 utilizationRate;       // basis points: 10000 = 100%
+    bool isHighRiskState;
+}
+```
+→ [`src/concepts/PositionMonitorTrap.sol`](./src/concepts/PositionMonitorTrap.sol)
+
+`shouldRespond()` fires if bridge token collateral concentration exceeds a configured threshold alongside a utilization spike — the specific pattern produced by a large stolen-collateral deposit.
+
+**Test coverage:**
+- High bridge-token collateral concentration → fires
+- Utilization spike alone → fires (separate threshold)
+- Combined concentration + utilization spike → fires
+- Safe utilization with diversified collateral → no trigger
+- Cold start → no trigger
+
+**Campaign demonstration (`stolenCollateralCampaign`):**
+The campaign deposited stolen mock tokens into `MockLendingPool` after a bridge drain. BridgeRouterGuard returned false — correctly, since the bridge accounting mismatch was already established and `snapFreeze()` was active. `MockLendingPool.isHighRiskState()` returned true. `PositionMonitorTrap.shouldRespond()` fires on this state. BridgeRouterGuard covers the bridge layer. The position monitor covers the lending layer. They are complementary.
+
+**Kelp-specific framing:** Aave's Guardian froze rsETH markets 77 minutes after the Kelp drain. A position monitor watching Aave's collateral composition for sudden large bridge-token deposits would have flagged the risk within blocks of the collateral deposit. The monitor does not prevent the bridge drain; it limits downstream protocol damage.
+
+---
+
+## Trap 4 — DVN Attestation Liveness Monitor
+
+**Evidence from:** [Kelp DAO (008)](./008-kelp-dao-apr-2026.md)
+
+The Kelp attack created a ~6-hour window between DVN failover onto poisoned endpoints and the drain. During that window, the DVN operated on falsified data for every query. Whether the resulting attestation patterns are distinguishable from normal DVN maintenance events requires empirical validation against real attestation traffic.
+
+This concept is not implemented as a contract in the current codebase. It is documented here because the Kelp case provides the strongest available evidence for its value, and because the other three concept traps demonstrate that building and testing a concept is the correct evaluation methodology.
+
+**Proposed monitoring surface:**
+```
+collect():        reads EndpointV2 for DVN attestation frequency,
+                  latency, and source endpoint addresses per OApp pathway
+shouldRespond():  fires if patterns deviate significantly from established
+                  baseline in ways consistent with failover onto different
+                  endpoints — unusual gaps, confirmation spikes, latency
+                  changes, or source endpoint address changes
+response:         pause the OFT bridge pending human review
+```
+
+**Empirical requirement:** Whether attestation pattern deviations from DVN endpoint failover are distinguishable from normal DVN maintenance operations is unknown without baseline data. The other three concept traps are grounded in observable on-chain state (`failedAttemptCount`, `owner()`, collateral composition). DVN attestation liveness requires empirical validation: collect baseline attestation data from a live LayerZero DVN deployment, measure endpoint failover signatures, and determine whether a threshold exists that separates failover from maintenance events. This is an engineering validation step, not an architectural speculation.
+
+---
+
+## How These Traps Relate to Each Other
+
+Each trap monitors a different point in the attack chain:
 
 ```
-Off-chain preparation     → Layer 4 (DVN), Layer 3 (failed calls)
-Intermediate takeover     → Layer 2 (ownership monitor)
-First on-chain drain/mint → Layer 1 (BridgeRouterGuard) — always the backstop
-Follow-on damage          → Layer 1 (already frozen)
+Off-chain preparation
+  → Trap 4 (DVN attestation) — if the signal is distinguishable
+
+Admin takeover / ownership change
+  → Trap 1 (Ownership state monitor) — fires before first phantom mint
+
+Pre-attack privileged function attempts
+  → Trap 2 (Pre-attack window monitor) — fires before first successful drain
+
+First on-chain accounting violation
+  → BridgeRouterGuard — always the backstop, fires on consequence
+
+Downstream protocol exploitation
+  → Trap 3 (Position monitor) — fires on lending pool impact
 ```
 
-No combination of layers catches the off-chain key compromise before any
-transaction hits the chain. That boundary is structural. What the combination
-provides is defense-in-depth that fires at multiple points in the attack chain
-rather than only after the first successful drain.
+BridgeRouterGuard catches every case that produces an accounting mismatch. It is sufficient for six of the eight exploits in this set. The three implemented concept traps cover the documented gaps: the ownership change that precedes the mint (Trap 1), the failed-attempt window before the drain (Trap 2), and the downstream lending protocol impact after the drain (Trap 3).
 
-Layer 1 is the implementation that exists today. Layers 2–4 are what the eight
-cases collectively define as the natural extension of the same Drosera pattern
-to earlier points in the attack chain. The composability of the Drosera model —
-same operator network, same consensus mechanism, different `collect()` and
-`shouldRespond()` per trap — means any of these can be added without changing the
-existing deployment.
+None of these traps are alternatives to BridgeRouterGuard. They are complementary monitors watching different parts of the same attack surface. The Drosera model — same operator network, same consensus mechanism, independent `collect()` and `shouldRespond()` per trap — makes deploying all of them simultaneously straightforward. What changes per deployment is which on-chain state `collect()` reads and what invariant `shouldRespond()` evaluates. The operator infrastructure is shared.
 
 ---
 
 ## The Composability Point
 
-Every trap in the Drosera model has the same structure:
-- `collect()` — reads specific on-chain state (view function)
-- `shouldRespond()` — evaluates invariants against that state (pure function)
-- A response function — executes on operator consensus
+Every trap in the Drosera model shares the same structure:
 
-BridgeRouterGuard is one instantiation of this pattern. It monitors three specific
-state variables on three specific contracts and calls `snapFreeze()` on consensus.
+- `collect()` — reads specific on-chain state (view, no side effects)
+- `shouldRespond()` — evaluates invariants against that state (pure, deterministic)
+- A response contract — executes on operator consensus
 
-A different protocol with different risk surfaces defines a different `collect()` —
-reading different on-chain state, applying different invariants, calling a different
-response function. The operator network, consensus mechanism, and governance around
-response authorization (operator allowlist, cooldown, two-step ownership) remain
-the same.
+BridgeRouterGuard is one instantiation. The four concept traps are four more. They share a deployment environment, an operator network, and a governance model. They do not share state or logic. Each is independently deployable and independently configurable.
 
-What changes per deployment:
-- Which contracts `collect()` reads
-- Which invariants `shouldRespond()` applies
-- What response function executes on consensus
-
-The eight case studies collectively map the detection surface of one specific
-implementation. The four extension concepts sketch what adjacent implementations
-would look like. None of these are hypothetical architectures — they apply the
-same pattern to different on-chain state that the cases showed is observable and
-meaningful.
+The eight case studies and the testnet campaign establish that for cross-chain bridge accounting violations, three vectors plus a reserve reconciliation backstop cover the detectable signal surface reliably. For the attack surface that precedes and follows the accounting violation — ownership changes, failed-attempt windows, downstream lending protocol impact — purpose-built monitors addressing those specific signals are the correct architectural extension.

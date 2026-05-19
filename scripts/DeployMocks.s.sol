@@ -100,7 +100,7 @@ contract DeployMocks is Script {
         // succeeds (doesn't record failed attempt). The test still demonstrates
         // that BridgeRouterGuardTrap sees no counter movement, proving scope.
         console.log("PrivilegedBridge deployed at:", address(privilegedBridge));
-        console.log("Note: deployer is a signer on PrivilegedBridge — Test 21 scope demo only");
+        console.log("Note: deployer is a signer on PrivilegedBridge - Test 21 scope demo only");
 
         vm.stopBroadcast();
 

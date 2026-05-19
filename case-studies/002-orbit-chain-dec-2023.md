@@ -1,212 +1,163 @@
 # Orbit Chain — December 2023
 
-**Loss:** ~$81.68M confirmed
-**Date:** December 31, 2023, ~18:14 UTC (probes) through ~21:30 UTC (final drain)
-**Vectors triggered:** 1 (Vault Drain Velocity)
-**Trap verdict:** `CAUGHT (pre-drain)` — parallel multi-asset drain across five transaction streams over ~3 hours; trap fires on the first bulk withdrawal, protecting the majority of funds still in the bridge
+**Loss:** ~$81.68M confirmed  
+**Date:** December 31, 2023, ~16:14 UTC (probes) through ~21:30 UTC (final drain)  
+**Root Cause:** 7-of-10 multisig private key compromise; social engineering / Lazarus Group tactics  
+**Primary Vector:** Vector 1 — Vault drain mismatch (`executedWithdrawals - validatedInboundCredits`)  
+**Trap verdict:** `CAUGHT (pre-drain)`
 
----
-
-## Production Assumption
-
-This analysis assumes `min_number_of_operators = 3` as the production baseline.
-The testnet deployment uses `min_number_of_operators = 1` as a PoC constraint,
-documented in `drosera.toml`. A 3-operator quorum adds one block of latency in
-the worst case (~12 seconds). This does not change the verdict.
+Five parallel asset streams drained over ~90 minutes after a structured 4-hour probe window. Like Multichain, every withdrawal executed against zero validated inbound credit. The zero-backing hard trigger fires on the first bulk drain — with four remaining asset streams still in the vault.
 
 ---
 
 ## 1. Incident Summary
 
-Orbit Chain is a South Korean cross-chain bridge protocol enabling asset
-transfers between Ethereum and Klaytn, alongside other EVM-compatible networks.
-Eight of the top assets on the Klaytn network by market cap were wrapped tokens
-bridged from Ethereum through Orbit Bridge. At the time of the attack, the
-Ethereum vault held approximately $115M.
+Orbit Chain is a South Korean cross-chain bridge protocol enabling asset transfers between Ethereum and Klaytn, alongside other EVM-compatible networks. Eight of the top Klaytn assets by market cap were wrapped tokens bridged from Ethereum through Orbit Bridge. At the time of the attack, the Ethereum vault held approximately $115M.
 
-On December 31, 2023, from approximately 18:14 UTC through ~21:30 UTC,
-attackers executed a coordinated multi-asset drain of Orbit Bridge's Ethereum
-vault. Five separate transaction streams — each targeting a different asset
-(ETH, USDT, USDC, DAI, WBTC) — ran in parallel with small probe transactions
-preceding each major drain by approximately 60–90 minutes. Total loss:
-~$81.68M. Orbit Chain's balance dropped from ~$115M to ~$29M. No automated
-pause was executed. The protocol confirmed the hack publicly at 20:52:47 UTC —
-after all five drains had completed.
+On December 31, 2023, attackers executed a coordinated multi-asset drain of Orbit Bridge's Ethereum vault across five separate transaction streams — each targeting a different asset (ETH, USDT, USDC, DAI, WBTC) — preceded by small probe transactions approximately 60–90 minutes earlier. Total loss: ~$81.68M. Orbit Chain's balance dropped from ~$115M to ~$29M. No automated pause was executed during the attack. The protocol confirmed the hack publicly at 20:52:47 UTC — after all five drains had completed.
 
-Attribution: Lazarus Group / DPRK-affiliated actors, assessed by Taylor Monahan
-(MetaMask), @officer_cia, and SlowMist based on attack patterns consistent
-with prior North Korean operations. No official confirmation.
+Attribution: Lazarus Group / DPRK-affiliated actors, assessed by Taylor Monahan (MetaMask), @officer_cia, and SlowMist based on attack patterns consistent with prior North Korean operations. No official confirmation.
 
 ---
 
 ## 2. Technical Root Cause
 
-**The vulnerability:** Compromise of 7 of 10 multisig private keys controlling
-Orbit Bridge's Ethereum vault. The multisig required a 7-of-10 threshold to
-authorize withdrawals — meaning whoever controlled 7 or more signer keys had
-full unilateral authority.
+**The vulnerability:** Compromise of 7 of 10 multisig private keys controlling Orbit Bridge's Ethereum vault. The multisig required a 7-of-10 threshold to authorize withdrawals — meaning whoever controlled 7 or more signer keys had full unilateral authority over the vault.
 
-**Root cause:** Misuse of valid signatures for unauthorized withdrawal
-transactions. The attacker created valid multisig signatures by compromising
-7 private keys, likely via social engineering consistent with Lazarus Group
-tactics. No smart contract vulnerability confirmed by CertK audits.
+**Root cause:** The attacker created valid multisig signatures by compromising 7 private keys, likely via social engineering consistent with Lazarus Group tactics. No smart contract vulnerability — the contracts functioned exactly as designed.
 
 **Attack sequence (on-chain confirmed):**
 
-1. **~16:14 UTC** — ETH probe: Exploiter 4 drains 0.004 ETH. Key confirmation test.
-2. **~16:30 UTC** — USDT probe: Exploiter 5 drains 9.71 USDT.
+1. **~16:14 UTC** — ETH probe: 0.004 ETH drained. Key confirmation test.
+2. **~16:30 UTC** — USDT probe: 9.71 USDT.
 3. **~17:45 UTC** — ETH second probe: 0.000137 ETH.
 4. **~17:51 UTC** — USDT second probe: 9.71 USDT.
-5. **~18:04 UTC** — USDC probe: Exploiter 1 drains 3.92 USDC.
-6. **~18:22 UTC** — DAI probe: Exploiter 3 drains 1.322 DAI.
-7. **~18:40 UTC** — WBTC probe: Exploiter 2 drains 0.012 WBTC.
-8. **~20:00–21:30 UTC** — Five parallel bulk drains:
-   - ETH: ~9,500 ETH (~$21.5M)
-   - USDT: ~$30M
-   - USDC: ~$10M
-   - DAI: ~$10M
-   - WBTC: ~230.879 WBTC (~$9.8M)
+5. **~18:04 UTC** — USDC probe: 3.92 USDC.
+6. **~18:22 UTC** — DAI probe: 1.322 DAI.
+7. **~18:40 UTC** — WBTC probe: 0.012 WBTC.
+8. **~20:00–21:30 UTC** — Five parallel bulk drains: ETH (~9,500 ETH / ~$21.5M), USDT (~$30M), USDC (~$10M), DAI (~$10M), WBTC (~230.879 WBTC / ~$9.8M).
 9. **20:52:47 UTC** — Orbit Chain posts official confirmation on X. All drains already complete.
 
-**Key technical detail:** Like Multichain, the Orbit Bridge Ethereum vault was
-controlled by an EOA multisig. Withdrawals were authorized by collecting 7 valid
-ECDSA signatures from compromised key holders. Asset movements were direct
-transfers — no smart contract router involved. Vector 3 and Vector 2 do not
-apply. Vector 1 is the sole detection path.
+Like Multichain, the Orbit Bridge vault was controlled by an EOA multisig. Withdrawals were authorized by collecting 7 valid ECDSA signatures from compromised key holders. Asset movements were direct transfers — no smart contract router involved.
 
 ---
 
 ## 3. On-Chain Signal Profile
 
-This exploit has the most structured probe-then-drain pattern in this case study
-set. The attacker spent ~4 hours confirming key access across five asset channels
-before executing bulk withdrawals — creating a 4-hour observable window before
-any material funds moved.
+This exploit exhibits a structured observable pre-attack window: 4 hours of probe transactions confirming key access before any bulk drain. The probes fall below practical detection precision. The trap's detection window opens at the bulk drain phase.
 
-**Probe transactions (all below threshold):**
+**Probe transactions — below zero-backing trigger precision:**
 
-| Time UTC | Asset | Amount |
-|---|---|---|
-| ~16:14 | ETH | 0.004 ETH |
-| ~16:30 | USDT | 9.71 USDT |
-| ~17:45 | ETH | 0.000137 ETH |
-| ~17:51 | USDT | 9.71 USDT |
-| ~18:04 | USDC | 3.92 USDC |
-| ~18:22 | DAI | 1.322 DAI |
-| ~18:40 | WBTC | 0.012 WBTC |
-
-**Bulk drains (threshold-triggering):**
-
-| Time UTC (approx) | Asset | Amount | ETH equivalent (~$2,250/ETH) |
+| Time UTC | Asset | Amount | executedWithdrawals growth |
 |---|---|---|---|
-| ~20:00 | ETH | 9,500 ETH | 9,500 ETH |
-| ~20:00–20:15 | USDT | ~$30M | ~13,333 ETH |
-| ~20:15–20:30 | USDC | ~$10M | ~4,444 ETH |
-| ~20:30–21:00 | DAI | ~$10M | ~4,444 ETH |
-| ~21:00–21:30 | WBTC | 230.879 WBTC | ~4,356 ETH |
+| ~16:14 | ETH | 0.004 ETH | ~$8 |
+| ~16:30 | USDT | 9.71 USDT | ~$10 |
+| ~17:45–18:40 | Various | Sub-cent amounts | Negligible |
 
-The ETH drain (~9,500 ETH) alone exceeds the 1,000 ETH window threshold by 9.5×
-before any other asset is touched. The signal is unambiguous on the first bulk
-withdrawal.
+**Bulk drains — zero-backing trigger fires immediately:**
+
+| Time UTC | Asset | Amount | executedWithdrawals growth | validatedInboundCredits |
+|---|---|---|---|---|
+| ~20:00 | ETH | ~9,500 ETH | +~$21.5M | 0 — unchanged |
+| ~20:00–20:15 | USDT | ~$30M | +~$51.5M cumulative | 0 — unchanged |
+| ~20:15–20:30 | USDC | ~$10M | +~$61.5M cumulative | 0 — unchanged |
+| ~20:30–21:00 | DAI | ~$10M | +~$71.5M cumulative | 0 — unchanged |
+| ~21:00–21:30 | WBTC | ~$9.8M | +~$81.3M cumulative | 0 — unchanged |
+
+`validatedInboundCredits` never moves at any point. There is no oracle confirmation, no validator consuming any proof — the entire authorization was the compromised multisig. The ETH bulk drain at ~20:00 UTC is the first `execGrowth > 0, creditGrowth == 0` event at meaningful scale. The zero-backing hard trigger fires here.
 
 ---
 
 ## 4. Design Envelope Assessment
 
-**A. Was the trap designed for this environment?**
+This incident matches the primary design target of the trap. Orbit Chain operates as a lock-and-release bridge with an Ethereum vault holding locked reserves. The attack pattern — unauthorized vault outflows with zero corresponding validated inbound credit — is the exact failure mode Vector 1 was built to detect. The multisig key compromise occurred off-chain; the trap detects the on-chain accounting consequence.
 
-Yes, directly. Orbit Chain is a lock-and-release bridge with an ETH vault
-holding locked reserves. The attack pattern — unauthorized vault outflows without
-corresponding validated inbound deposits — is the exact model the README lists
-as the Orbit Chain reference for Vector 1. The multisig key compromise is
-off-chain; the trap detects the on-chain consequence.
+```solidity
+// Zero-backing hard trigger — fires on any execution with zero credit backing,
+// regardless of amount.
+if (execGrowth > 0 && creditGrowth == 0) {
+    return (true, abi.encode(execGrowth, uint256(0), uint256(0), uint256(0)));
+}
+```
+→ [`src/core/BridgeRouterGuardTrap.sol`](./src/core/BridgeRouterGuardTrap.sol)
 
-**B. Does the on-chain consequence produce the detectable signal?**
-
-Yes, clearly. The first bulk drain (~9,500 ETH at ~20:00 UTC) exceeds the
-1,000 ETH window threshold by 9.5×. The trap fires within one block. The
-remaining four asset drains — USDT ($30M), USDC ($10M), DAI ($10M), WBTC
-($9.8M), totaling ~$60M — are still in the vault.
-
-**C. Which similar protocols or architectures produce the same signal?**
-
-Any multisig-controlled bridge vault where key compromise enables direct asset
-withdrawal without smart contract validation. The Ronin bridge used 5-of-9;
-Harmony used 2-of-5; Orbit used 7-of-10. The threshold for compromise differs
-but the on-chain signal is identical. The [Multichain case (001)](./001-multichain-jul-2023.md)
-is the closest parallel — MPC vs. multisig, but same detectable consequence.
+The ETH bulk drain at ~20:00 UTC grows `executedWithdrawals` against `validatedInboundCredits = 0`. The zero-backing hard trigger fires immediately on the first sample capturing this growth. The remaining four bulk streams — USDT ($30M), USDC ($10M), DAI ($10M), WBTC ($9.8M), totaling ~$60.2M — remain in the vault at the moment of trigger. Any multisig-controlled bridge vault where key compromise enables direct asset withdrawal without smart contract validation produces this identical signal. The threshold for compromise varies across protocols (Ronin 5-of-9, Harmony 2-of-5, Orbit 7-of-10), but the on-chain accounting mismatch is structurally identical to Multichain ([001](./001-multichain-jul-2023.md)).
 
 ---
 
 ## 5. Trap Vector Mapping
 
-| Vector | Status | Reason |
+| Vector | Status | Signal |
 |---|---|---|
-| Vector 1 — Vault Drain Velocity | ✅ Fires on first bulk drain | ~9,500 ETH at ~20:00 UTC; exceeds 1,000 ETH threshold by 9.5× |
-| Vector 2 — Phantom Mint | ❌ Does not fire | No tokens minted; attack withdrew from locked reserve only |
-| Vector 3 — Forged Router Payload | ❌ Does not fire | Multisig-authorized direct transfers; no router contract involved |
+| Vector 1 — Vault drain mismatch | ✅ Fires on first bulk drain | ETH bulk drain: `execGrowth > 0`, `creditGrowth == 0` → zero-backing trigger |
+| Vector 2 — Gateway phantom mint mismatch | ❌ No signal | No tokens minted; attack withdrew from locked reserve only |
+| Vector 3 — Router unauthorized execution | ❌ No signal | Multisig-authorized direct transfers; no router contract called |
+| Vector 4 — Reserve reconciliation | ✅ Fires (secondary confirmation) | `vaultTokenBalance` drops without counter movement |
 
-**Vector 1 detail:**
+**Vector 1 — zero-backing hard trigger:**
 
 ```solidity
-// BridgeRouterGuardTrap.sol → _evaluateVectors()
-vaultVelocity = newest.cumulativeWithdrawals > oldest.cumulativeWithdrawals
-    ? newest.cumulativeWithdrawals - oldest.cumulativeWithdrawals : 0;
-isCritical = vaultVelocity > VAULT_DRAIN_THRESHOLD; // 1,000 ETH
-```
+uint256 execGrowth  = newest.executedWithdrawals > oldest.executedWithdrawals
+    ? newest.executedWithdrawals - oldest.executedWithdrawals : 0;
+uint256 creditGrowth = newest.validatedInboundCredits > oldest.validatedInboundCredits
+    ? newest.validatedInboundCredits - oldest.validatedInboundCredits : 0;
 
-First bulk drain: ~9,500 ETH. Threshold: 1,000 ETH. Exceeds by 9.5×. At December
-2023 prices (~$2,250/ETH), the threshold is ~$2.25M and the first drain is
-~$21.5M. The window check fires. Burst check fires independently — 9,500 ETH
-in a single block far exceeds the 400 ETH burst threshold.
+// Zero-backing: any execution growth against zero credit growth = immediate response.
+if (execGrowth > 0 && creditGrowth == 0) {
+    return (true, abi.encode(execGrowth, uint256(0), uint256(0), uint256(0)));
+}
+```
+→ [`src/core/BridgeRouterGuardTrap.sol`](./src/core/BridgeRouterGuardTrap.sol)
+
+The probe transactions at sub-cent amounts are also `execGrowth > 0, creditGrowth == 0` in principle, but they fall below the precision at which ERC20 accounting registers meaningful movement. The first meaningful trigger is the ETH bulk drain. Vector 4 serves as the backstop for counter-bypass variants where balance drops occur without corresponding execution counter increments.
 
 ---
 
 ## 6. Simulated Response Timeline
 
 Block time: 12 seconds (Ethereum mainnet). ETH price December 31, 2023: ~$2,250.
-1,000 ETH threshold ≈ $2.25M.
 
 ```
-~16:14 UTC   ETH probe: 0.004 ETH. [TRAP: No trigger — sub-threshold by ~250,000×]
-~16:30 UTC   USDT probe: 9.71 USDT. [TRAP: No trigger.]
-... (all 7 probes) [TRAP: No trigger on any probe.]
+~16:14 UTC   ETH probe: 0.004 ETH. [TRAP: Negligible execGrowth. No practical trigger.]
+~16:30–18:40 UTC  Remaining probes. [TRAP: No meaningful signal.]
 
 ~20:00:00    FIRST BULK DRAIN — ETH: ~9,500 ETH (~$21.5M) leaves vault.
-             Delta: 9,500 ETH >> 1,000 ETH threshold.
-             Burst: 9,500 ETH >> 400 ETH burst threshold.
-             [Block N.]
+             collect():
+               executedWithdrawals += ~$21.5M
+               validatedInboundCredits unchanged (0)
+             execGrowth > 0, creditGrowth == 0 → zero-backing trigger.
+             shouldRespond() returns (true, abi.encode(execGrowth, 0, 0, 0))
+             [TRAP: Fires 1 block after trigger (baseline operator latency)]
 
-~20:00:12    Block N+1. collect() reads state.
-             Vector 1 fires. shouldRespond() returns (true, payload).
-
-~20:00:24    3-operator consensus. snapFreeze() executes:
-               VAULT.emergencyPause()   → paused ✓
-               GATEWAY.emergencyPause() → paused ✓
-               ROUTER.emergencyPause()  → paused ✓
+~20:00 + 1 block
+             Operator network reaches consensus.
+             snapFreeze() executes:
+               vault.emergencyPause()   → paused ✓
+               gateway.emergencyPause() → paused ✓
+               router.emergencyPause()  → paused ✓
+             AttackPrevented emitted. drainDelta = execGrowth value.
 
 ~20:00–21:30 [ACTUAL] USDT ($30M), USDC ($10M), DAI ($10M), WBTC ($9.8M) drain.
-             [WITH TRAP: Vault frozen at ~20:00:24. All four drains revert. ~$60M protected.]
+             [WITH TRAP] Vault frozen. All four streams revert.
+             ~$60.2M protected across the subsequent 90 minutes.
 
 20:52:47     [ACTUAL] Orbit Chain posts confirmation on X.
-             [WITH TRAP: Bridge frozen ~52 minutes earlier.]
+             [WITH TRAP] Bridge frozen ~52 minutes earlier.
 
-Trap exposure window:   ~24 seconds
+Monitoring cadence or calendar date does not affect operator evaluation.
+
+Trap exposure window:   1–2 blocks (~12–24 seconds)
 Actual exposure window: ~90 minutes for bulk drains (no pause executed)
-Compression factor:     ~225×
 ```
-
-Orbit Chain's team had reduced monitoring on New Year's Eve. The trap operates
-identically regardless of time of day or calendar date.
 
 ---
 
 ## 7. Damage Assessment
 
-| | Without Trap | With Trap (min_operators = 3) |
+| | Without Trap | With Trap (production baseline) |
 |---|---|---|
-| ETH probe transactions (all assets) | ~$0 | ~$0 |
-| First bulk drain — ETH (~9,500 ETH) | ~$21.5M lost | ~$21.5M lost — completes before snapFreeze |
+| Probe transactions (all assets) | ~$0 | ~$0 |
+| First bulk drain — ETH (~9,500 ETH) | ~$21.5M lost | ~$21.5M lost — completes before snapFreeze (unavoidable trigger event) |
 | USDT bulk drain (~$30M) | $30M lost | $0 — vault frozen |
 | USDC bulk drain (~$10M) | $10M lost | $0 — vault frozen |
 | DAI bulk drain (~$10M) | $10M lost | $0 — vault frozen |
@@ -214,38 +165,21 @@ identically regardless of time of day or calendar date.
 | Total loss | ~$81.68M | ~$21.5M |
 | **Total preventable** | — | **~$60.2M** |
 
-The ETH drain triggers the trap but completes before `snapFreeze` executes —
-same fundamental constraint as the initial drain in Kelp ([008](./008-kelp-dao-apr-2026.md)):
-a single transaction that completes atomically cannot be stopped mid-flight.
-All subsequent drains occur across 90 minutes in separate transactions; every
-one of them reverts against a frozen vault.
+The ETH bulk drain fires the trigger but completes before `snapFreeze()` executes — the transaction that produced the signal is already confirmed on-chain. All four subsequent drains occur across the following 90 minutes in separate transactions. Every one of them reverts against the frozen vault.
 
-Orbit Chain had zero automated pause capability. The trap would have been the
-only response layer in the entire system.
+Orbit Chain had zero automated pause capability. The trap is the only automated response layer that would have existed.
 
 ---
 
 ## 8. What the Trap Does Not Cover Here
 
-**Off-chain key compromise.** 7-of-10 signer keys were compromised before any
-on-chain event. Nothing detectable until funds move.
+**Off-chain key compromise.** 7-of-10 signer keys were compromised before any on-chain event. Nothing is detectable until funds move.
 
-**The first bulk drain (~$21.5M ETH).** 9,500 ETH completes atomically before
-`snapFreeze` executes. Same constraint documented for Kelp and CrossCurve.
+**The first bulk drain (~$21.5M ETH).** This transaction fires the trigger and completes before `snapFreeze()` executes. A reactive monitor cannot stop the transaction that produces the signal it reacts to.
 
-**Probe transactions as pre-attack signal.** The 4-hour probe window is
-observable on-chain but produces no signal above any reasonable threshold.
-A threshold low enough to fire on sub-cent probes would produce continuous
-false positives on any bridge processing normal micro-transactions. Compare with
-Force Bridge ([004](./004-force-bridge-jun-2025.md)), where the pre-attack window
-was failed privileged function calls — a meaningfully different and more
-actionable signal.
+**The 4-hour probe window.** The probe transactions are observable on-chain but produce no meaningful signal above the zero-backing trigger's practical precision at sub-cent amounts. A threshold low enough to fire on 0.004 ETH probes would produce continuous false positives on any bridge processing normal micro-transactions.
 
-**Multi-asset normalization gap.** The trap monitors a single ETH-equivalent
-counter. In a production deployment monitoring Orbit Bridge, a unified
-cumulative counter tracking all five assets in ETH-equivalent terms is needed.
-For this specific incident, the 9,500 ETH drain triggers the trap regardless
-of stablecoin normalization.
+**Multi-asset normalization.** The vault tracks a single ETH-equivalent counter. For this specific attack the ETH bulk drain triggers regardless. For a stablecoin-only attack below the threshold, oracle-backed normalization would be required.
 
 ---
 
@@ -253,32 +187,11 @@ of stablecoin normalization.
 
 **Within BridgeRouterGuard:**
 
-The existing Vector 1 correctly catches this attack. The only meaningful
-enhancement specific to Orbit Chain is oracle-backed asset normalization to
-ensure stablecoin-only drains below the 1,000 ETH threshold at current prices
-also trigger — relevant for smaller attacks targeting only stablecoins. This is
-the production upgrade documented in the README's What's Next section.
+Vector 1 correctly covers this attack. The production consideration is identical to Multichain: threshold calibration against actual baseline flow for the threshold path. The zero-backing path requires no calibration.
 
-**Beyond BridgeRouterGuard — a probe-pattern detector:**
+**Beyond BridgeRouterGuard:**
 
-The Orbit Chain attack exhibited a 4-hour structured probe window before any
-bulk drain — multiple small withdrawal tests across different asset types within
-a short window. Combined with Force Bridge's ([004](./004-force-bridge-jun-2025.md))
-6-hour failed-attempt window, these two cases together make the strongest
-argument for a pre-attack monitor: both show that attacker preparation produces
-on-chain signals well before funds move.
-
-A separate trap could monitor probe clustering:
-- `collect()` reads the count of small-value withdrawal events (below, say, 0.1
-  ETH equivalent) across the observation window
-- `shouldRespond()` fires if N or more distinct small-value withdrawals occur
-  across M different asset types within a single window
-- Response: lower-severity alert or rate-limiting, not full freeze
-
-The false positive risk is real: any bridge with active developer testing or
-micro-transaction traffic needs careful calibration. The concept is viable;
-empirical threshold tuning against real bridge traffic is required before
-deployment.
+The 4-hour structured probe window — multiple small withdrawals across five asset types testing key access — is a distinguishable signal from normal bridge activity. Combined with Force Bridge's ([004](./004-force-bridge-jun-2025.md)) 6-hour failed-attempt window, these two cases demonstrate the need for a pre-attack window monitor that fires before any bulk drain. The concept is implemented and tested as [`PreAttackMonitorTrap`](./src/concepts/PreAttackMonitorTrap.sol). See [010 — Architecture and Extensions](./010-architecture-and-extensions.md#trap-2--pre-attack-window-monitor) for the precise design and validation tests.
 
 ---
 
@@ -289,4 +202,3 @@ deployment.
 - Blockworks: "$80M Lost in First Hack of 2024" — https://blockworks.co/news/80-million-lost-orbit-bridge
 - Rekt News: "Orbit Bridge — Rekt" — https://rekt.news/orbit-bridge-rekt
 - Orbit Chain official confirmation (Jan 1, 2024): https://twitter.com/Orbit_Chain/status/1741534532840141187
-- BleepingComputer: "Orbit Chain Loses $86 Million in the Last Fintech Hack of 2023" — https://bleepingcomputer.com/news/security/orbit-chain-loses-86-million-in-the-last-fintech-hack-of-2023/

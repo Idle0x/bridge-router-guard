@@ -1,50 +1,24 @@
 # CrossCurve — February 2026
 
-**Loss:** ~$2.76M–$3M confirmed (BlockSec: $2.76M; estimates up to $3M across all chains; EYWA tokens extracted but unliquidatable — see section 7)
-**Date:** February 2, 2026; drain unfolded across multiple chains within hours
-**Vectors triggered:** 3 (Forged Router Payload — direct hit, cleanest Vector 3 match in this case study set)
-**Trap verdict:** `CAUGHT (post-drain)` — each individual chain drain is a single atomic transaction; trap fires within one block per chain, preventing repeat calls and cross-chain propagation
+**Loss:** ~$2.76M–$3M confirmed (BlockSec: $2.76M; estimates up to $3M across all chains; EYWA tokens extracted but unliquidatable — see section 7)  
+**Date:** February 2, 2026; drain unfolded across multiple chains within hours  
+**Root Cause:** Missing access control on publicly callable execution function; Axelar gateway validation bypass  
+**Primary Vector:** Vector 3 — Router unauthorized execution (`executedMessages - gatewayValidatedMessages`)  
+**Trap verdict:** `CAUGHT (post-drain)`
 
----
-
-## Production Assumption
-
-This analysis assumes `min_number_of_operators = 3` as the production baseline.
-The testnet deployment uses `min_number_of_operators = 1` as a PoC constraint,
-documented in `drosera.toml`. A 3-operator quorum adds one block of latency in
-the worst case (~12 seconds). This does not change the verdict.
+CrossCurve is the cleanest Vector 3 case in this set. A missing access control check on `ReceiverAxelar.expressExecute()` allowed the attacker to call it directly with a fabricated payload, bypassing the Axelar gateway entirely. In v3 terms: `executedMessages` increments, `gatewayValidatedMessages` does not — the mismatch is immediate and the trap fires on the same block as the unauthorized execution.
 
 ---
 
 ## 1. Incident Summary
 
-CrossCurve (formerly EYWA) is a cross-chain decentralized exchange and bridge
-built in partnership with Curve Finance, with ~$7M in venture funding. Its
-architecture combines Axelar's General Message Passing (GMP) layer with internal
-PortalV2 bridge contracts and a custom EYWA Oracle Network. ReceiverAxelar
-contracts receive and validate cross-chain messages, then authorize PortalV2 to
-release or mint tokens.
+CrossCurve (formerly EYWA) is a cross-chain decentralized exchange and bridge built in partnership with Curve Finance, with ~$7M in venture funding. Its architecture combines Axelar's General Message Passing (GMP) layer with internal PortalV2 bridge contracts and a custom EYWA Oracle Network. `ReceiverAxelar` contracts receive and validate cross-chain messages, then authorize PortalV2 to release or mint tokens.
 
-On February 2, 2026, an attacker exploited a missing validation check in
-CrossCurve's ReceiverAxelar contract. The `expressExecute()` function — designed
-for expedited cross-chain execution — was publicly callable with no authentication
-of message origin. The only enforced check was whether a `commandId` had been
-previously used, trivially bypassed with a fresh unique value. The attacker
-called `expressExecute()` directly with a fully fabricated payload, bypassing the
-Axelar gateway entirely, and triggered PortalV2 to release tokens without any
-corresponding deposit.
+On February 2, 2026, an attacker exploited a missing validation check in CrossCurve's `ReceiverAxelar` contract. The `expressExecute()` function — designed for expedited cross-chain execution — was publicly callable with no authentication of message origin. The only enforced check was whether a `commandId` had been previously used, trivially bypassed with a fresh unique value. The attacker called `expressExecute()` directly with a fully fabricated payload, bypassing the Axelar gateway entirely, and triggered `PortalV2` to release tokens without any corresponding deposit on a source chain.
 
-The exploit was replicated across Ethereum, Arbitrum, Optimism, Base, Mantle,
-Kava, Frax, Celo, and Blast. BlockSec confirmed ~$1.3M on Ethereum and ~$1.28M
-on Arbitrum as primary losses; smaller amounts across remaining chains. Total:
-~$2.76M–$3M. CrossCurve paused contracts upon detection, identified ten
-attacker-linked addresses, and issued a 72-hour fund-return window.
+The exploit was replicated across Ethereum, Arbitrum, Optimism, Base, Mantle, Kava, Frax, Celo, and Blast. BlockSec confirmed ~$1.3M on Ethereum and ~$1.28M on Arbitrum as primary losses; smaller amounts across remaining chains. Total: ~$2.76M–$3M. CrossCurve paused contracts upon detection, identified ten attacker-linked addresses, and issued a 72-hour fund-return window.
 
-**Note on EYWA token extraction:** The attacker also minted 999,787,453 EYWA
-tokens on Ethereum. However, EYWA's entire circulating supply had migrated to
-Arbitrum at token generation. No on-chain liquidity pools existed for EYWA on
-Ethereum, and the sole CEX with an Ethereum deposit channel froze it immediately.
-These tokens could not be liquidated and are excluded from the confirmed loss figure.
+**Note on EYWA token extraction:** The attacker also minted 999,787,453 EYWA tokens on Ethereum. However, EYWA's entire circulating supply had migrated to Arbitrum at token generation. No on-chain liquidity pools existed for EYWA on Ethereum, and the sole CEX with an Ethereum deposit channel froze it immediately. These tokens could not be liquidated and are excluded from the confirmed loss figure.
 
 ---
 
@@ -52,11 +26,7 @@ These tokens could not be liquidated and are excluded from the confirmed loss fi
 
 **The vulnerability:** Missing access control on `ReceiverAxelar.expressExecute()`.
 
-Under Axelar's intended security model, cross-chain messages must be approved by
-the Axelar Gateway on the destination chain and pass `validateContractCall()`
-before execution. The `expressExecute()` path was designed as a fast-path
-alternative for legitimate Axelar relayers only. CrossCurve's implementation
-enforced no such restriction — the function was publicly callable by anyone.
+Under Axelar's intended security model, cross-chain messages must be approved by the Axelar Gateway on the destination chain and pass `validateContractCall()` before execution. The `expressExecute()` path was designed as a fast-path alternative for legitimate Axelar relayers only. CrossCurve's implementation enforced no such restriction — the function was publicly callable by anyone.
 
 **The vulnerable code (confirmed by QuillAudits and independent analysis):**
 
@@ -72,110 +42,93 @@ function expressExecute(
     executedCommands[commandId] = true;
     // NO validation of sourceChain authenticity
     // NO validation of sourceAddress against whitelist
-    // NO multi-guardian confirmation requirement
     // NO verification that Axelar actually relayed this message
     _executePayload(sourceChain, sourceAddress, payload);
 }
 ```
 
-Additionally: the confirmation threshold was misconfigured to 1, disabling
-multi-guardian validation even on paths that attempted it.
+Additionally: the confirmation threshold was misconfigured to 1, disabling multi-guardian validation even on paths that attempted it.
 
 **Attack sequence:**
 
 1. Attacker generates a fresh `commandId` (any unique `bytes32`).
 2. Attacker spoofs `sourceChain` and `sourceAddress` to appear as a legitimate CrossCurve portal address.
-3. Attacker crafts a malicious payload: `abi.encode(UNLOCK_SELECTOR, attackerAddress, tokenAddress, amount)`
+3. Attacker crafts a malicious payload: `abi.encode(UNLOCK_SELECTOR, attackerAddress, tokenAddress, amount)`.
 4. Attacker calls `ReceiverAxelar.expressExecute()` directly — no Axelar gateway involvement. Contract accepts, marks `commandId` as executed, triggers `PortalV2.unlock()`. Tokens released.
 5. Attack replicated across 9 chains with fresh `commandId` values per chain.
 6. Arbitrum assets converted to WETH via CoW Protocol, bridged to Ethereum via Across Protocol.
-
-This is structurally identical to the Nomad 2022 exploit ($190M), where a root
-hash initialized to zero allowed any message replay. CrossCurve is a direct
-descendant of that pattern class, four years later.
 
 ---
 
 ## 3. On-Chain Signal Profile
 
-CrossCurve is the cleanest Vector 3 case in this entire set. The signal is not
-velocity — it is a binary state change per chain.
+CrossCurve is a hard invariant case — the signal is not a velocity accumulation, it is a binary state change per chain.
 
-`spoofedMessageExecuted` maps to a router/receiver contract executing a
-cross-chain payload without canonical gateway validation.
-`ReceiverAxelar.expressExecute()` bypassing `validateContractCall()` is exactly
-this invariant. One unauthorized call = immediate trigger.
+In v3 terms, what `collect()` would read:
 
-| Chain | Loss | Signal type | Vector 3 fires? |
+| Field | Pre-attack | Post `expressExecute()` | Delta |
 |---|---|---|---|
-| Ethereum | ~$1.3M | Single `expressExecute()` call | ✅ Immediately |
-| Arbitrum | ~$1.28M | Single `expressExecute()` call | ✅ Immediately |
-| Optimism, Base, Mantle, Kava, Frax, Celo, Blast | Smaller amounts | Same | ✅ Per chain |
+| `executedWithdrawals` | baseline | +released amount | grows |
+| `validatedInboundCredits` | baseline | unchanged — no gateway validation | 0 |
+| `cumulativeMinted` | baseline | +EYWA minted (illiquid) | grows |
+| `validatedMintAuthorizations` | baseline | unchanged — no authorization consumed | 0 |
+| `executedMessages` | baseline | +1 | +1 |
+| `gatewayValidatedMessages` | baseline | unchanged — no gateway validation | 0 |
+| `vaultTokenBalance` | baseline | drops by released amount | drops |
 
-The signal is hard boolean — no multi-block buildup. `spoofedMessageExecuted`
-flips in a single transaction. Vector 3 fires on block N+1 with zero history
-required. Vector 1 may also fire if the per-chain drain exceeds 1,000 ETH
-equivalent, but Vector 3 fires unconditionally regardless.
+Three invariants are violated simultaneously on the same block:
+- Vector 1: `executedWithdrawals` grows, `validatedInboundCredits` does not → zero-backing trigger
+- Vector 2: `cumulativeMinted` grows (EYWA), `validatedMintAuthorizations` does not → mismatch (below threshold for illiquid EYWA)
+- Vector 3: `executedMessages` grows, `gatewayValidatedMessages` does not → hard invariant fires
+
+Vector 3 fires first and unconditionally. It requires no threshold check and no prior sample.
 
 ---
 
 ## 4. Design Envelope Assessment
 
-**A. Was the trap designed for this environment?**
+This incident matches the design target of Vector 3. CrossCurve's architecture relies on a destination-side receiver contract that must enforce gateway validation before executing cross-chain payloads. The `expressExecute()` bypass of `validateContractCall()` is structurally identical to the mock router's exploit path: execution occurs without a corresponding gateway-validated message registration.
 
-Yes — CrossCurve is the primary real-world reference for Vector 3 in the README,
-and the technical analysis confirms the match is exact. `expressExecute()` bypassing
-`validateContractCall()` is structurally identical to `MockBridgeRouter.expressExecute()`
-bypassing `validatedPayloads` in the mock. The invariant is the same:
-**execution must not occur without gateway-validated authorization.**
+```solidity
+// [EXPLOIT EXECUTION — CrossCurve Feb 2026 pattern]
+// expressExecute() with no gateway validation check.
+// executedMessages increments. gatewayValidatedMessages does not.
+// The invariant fires: executedMessages > gatewayValidatedMessages.
+function expressExecute(bytes calldata, bytes32) external {
+    require(!paused, "Router paused");
+    executedMessages++;
+    // gatewayValidatedMessages unchanged — the mismatch grows.
+}
+```
+→ [`src/mocks/core/MockBridgeRouter.sol`](./src/mocks/core/MockBridgeRouter.sol)
 
-**B. Does the on-chain consequence produce the detectable signal?**
-
-Yes, immediately. One unauthorized `expressExecute()` call = `spoofedMessageExecuted`
-flips to true = Vector 3 fires on the next `collect()`, ~12 seconds after the
-drain. No threshold calibration needed. No history required.
-
-**C. Which similar protocols or architectures produce the same signal?**
-
-Any cross-chain bridge using Axelar GMP where the destination-side receiver
-exposes a publicly callable execution function that skips `validateContractCall()`:
-- Any custom `ReceiverAxelar` relying only on `commandId` uniqueness rather than
-  Gateway approval (replay protection is not access control)
-- Any bridge where `expressExecute()` or a fast-path equivalent is callable
-  without the Axelar Gateway's approval signature
-- Any bridge receiver that accepts user-supplied `sourceChain` and `sourceAddress`
-  without whitelisting them against trusted peers
-
-The Kelp exploit ([008](./008-kelp-dao-apr-2026.md)) operates on a different
-messaging layer (LayerZero rather than Axelar) but is in the same family:
-forged cross-chain messages bypassing multi-party validation. Both CrossCurve
-and Kelp demonstrate that the "single point of trust" pattern — whether a
-1-of-1 DVN or an unauthenticated execution function — produces the same class
-of exploitable surface.
+One unauthorized `expressExecute()` call causes `executedMessages` to exceed `gatewayValidatedMessages` by exactly 1. Vector 3's hard invariant fires immediately on the first sample capturing this growth. No threshold calibration is required. No historical baseline is needed. Any cross-chain bridge using Axelar GMP where the destination-side receiver exposes a publicly callable execution function that skips `validateContractCall()` produces this identical signal. The Kelp DAO exploit ([008](./008-kelp-dao-apr-2026.md)) operates on a different messaging layer but shares the same structural family: forged cross-chain messages bypassing single-point validation. CrossCurve's trust failure was an unauthenticated public function; Kelp's was a poisoned DVN. Both produce the same router execution mismatch.
 
 ---
 
 ## 5. Trap Vector Mapping
 
-| Vector | Status | Reason |
+| Vector | Status | Signal |
 |---|---|---|
-| Vector 1 — Vault Drain Velocity | ⚠️ Chain and threshold dependent | Ethereum ~$1.3M and Arbitrum ~$1.28M may be below 1,000 ETH threshold depending on token composition; Vector 3 fires unconditionally |
-| Vector 2 — Phantom Mint | ⚠️ EYWA tokens only — illiquid | 999M EYWA minted but unliquidatable; no practical harm; Vector 3 fires regardless |
-| Vector 3 — Forged Router Payload | ✅ Fires immediately (Block N+1) | `expressExecute()` called directly without Axelar gateway validation; hard boolean invariant |
+| Vector 1 — Vault drain mismatch | ✅ Fires (same block) | `executedWithdrawals` grows, `validatedInboundCredits` unchanged — zero-backing trigger |
+| Vector 2 — Gateway phantom mint mismatch | ⚠️ EYWA tokens — illiquid, below threshold | `cumulativeMinted` grows (999M EYWA), `validatedMintAuthorizations` unchanged — but EYWA market value produces delta below `PHANTOM_MINT_THRESHOLD` |
+| Vector 3 — Router unauthorized execution | ✅ Fires immediately (same block, no history needed) | `executedMessages > gatewayValidatedMessages` → hard invariant |
+| Vector 4 — Reserve reconciliation | ✅ Fires (same block, secondary) | `vaultTokenBalance` drops without counter movement |
 
-**Vector 3 detail:**
+Vector 3 fires first. It requires a single sample and produces an immediate response regardless of amount. Vectors 1 and 4 fire on the same block as secondary confirmation. Vector 2 fires but produces a delta below the response threshold for EYWA's market valuation.
 
 ```solidity
-// BridgeRouterGuardTrap.sol → shouldRespond()
-if (newest.spoofedMessageExecuted) {
-    return (true, abi.encode(..., true));
+// Hard invariant: router must never execute without gateway validation.
+// Any gap between executedMessages and gatewayValidatedMessages = immediate response.
+// No threshold. No prior sample needed. Single sample sufficient.
+if (newest.executedMessages > newest.gatewayValidatedMessages) {
+    uint256 unauthorizedExecs = newest.executedMessages - newest.gatewayValidatedMessages;
+    return (true, abi.encode(uint256(0), uint256(0), unauthorizedExecs, uint256(0)));
 }
 ```
+→ [`src/core/BridgeRouterGuardTrap.sol`](./src/core/BridgeRouterGuardTrap.sol)
 
-`ReceiverAxelar.expressExecute()` called directly by attacker without Axelar
-Gateway approval = unauthorized payload execution = `spoofedMessageExecuted`
-maps to true on the next block's `collect()` call. Hard boolean invariant. No
-history needed. One unauthorized call = immediate `snapFreeze`.
+**Multi-chain deployment reality:** This is a single-chain analysis. A single Ethereum deployment catches Ethereum's drain (~$1.3M trigger event + any follow-on attempts). The Arbitrum drain (~$1.28M) requires a separate Arbitrum deployment. Each chain fires independently within one block of the first unauthorized `expressExecute()` on that chain.
 
 ---
 
@@ -185,81 +138,76 @@ Block time: 12 seconds (Ethereum). ETH price February 2026: ~$2,500.
 
 ```
 Pre-exploit:         expressExecute() publicly callable since deployment.
-                     No prior unauthorized calls. [TRAP: No trigger.]
+                     collect(): all counters at baseline.
+                     shouldRespond(): all invariants satisfied. false.
 
 T+0:00               FIRST UNAUTHORIZED expressExecute() — Ethereum.
                      commandId: fresh unique bytes32.
                      sourceChain / sourceAddress: spoofed.
                      payload: UNLOCK_SELECTOR + attacker + ~$1.3M tokens.
                      PortalV2.unlock() executes. Tokens released.
-                     [Block N. Drain complete. Irreversible.]
 
-T+0:12               Block N+1. collect() reads state.
-                     Vector 3: spoofedMessageExecuted = true.
-                     shouldRespond() fires immediately. No history needed.
+                     collect() on this block:
+                       executedMessages: baseline + 1
+                       gatewayValidatedMessages: baseline (unchanged)
+                       executedWithdrawals: grows by released amount
+                       validatedInboundCredits: unchanged
+                       vaultTokenBalance: drops
 
-T+0:24               3-operator consensus. snapFreeze() executes — Ethereum:
-                       VAULT.emergencyPause()   → paused ✓
-                       GATEWAY.emergencyPause() → paused ✓
-                       ROUTER.emergencyPause()  → paused ✓
+                     shouldRespond() evaluates Vector 3 first:
+                       executedMessages > gatewayValidatedMessages → true
+                       Returns (true, abi.encode(0, 0, unauthorizedExecs, 0))
+                       [TRAP: Fires 1 block after trigger (baseline operator latency)]
+
+T+0 + 1 block
+                     Operator network reaches consensus.
+                     snapFreeze() executes — Ethereum:
+                       vault.emergencyPause()   → paused ✓
+                       gateway.emergencyPause() → paused ✓
+                       router.emergencyPause()  → paused ✓
                      Any further expressExecute() calls on Ethereum revert.
 
 T+0 to T+hours       [ACTUAL] Attack replicated on Arbitrum, Optimism, Base,
-                     Mantle, Kava, Frax, Celo, Blast.
-                     [WITH PER-CHAIN TRAPS: Each chain fires within 24s of
-                      its first unauthorized call.]
-                     [WITHOUT per-chain traps: Other chains drain unimpeded.]
+                     Mantle, Kava, Frax, Celo, Blast in separate transactions.
+                     [WITH PER-CHAIN TRAPS] Each chain fires within 1 block
+                     of its first unauthorized call.
+                     [WITHOUT per-chain traps] Other chains drain unimpeded.
 
 Hours later          CrossCurve manually pauses contracts, identifies 10 wallets,
                      issues 72-hour return window.
 
-Trap exposure window (per chain):   ~24 seconds from first unauthorized call
-Actual exposure window:             Hours (no automated containment)
+Trap exposure window (per chain): 1–2 blocks from first unauthorized call
+Actual exposure window:           Hours (no automated containment per chain)
 ```
 
 ---
 
 ## 7. Damage Assessment
 
-Three loss figures circulate — $1.4M (QuillAudits, liquid assets only), $2.76M
-(BlockSec, most detailed chain-by-chain breakdown), ~$3M (Defimon, all chains).
-This analysis uses BlockSec's $2.76M as the primary confirmed figure.
+Three loss figures circulate — $1.4M (QuillAudits, liquid assets only), $2.76M (BlockSec, most detailed chain-by-chain breakdown), ~$3M (Defimon, all chains). This analysis uses BlockSec's $2.76M as the primary confirmed figure.
 
-| | Without Trap | With Trap (per-chain deployment) |
+| | Without Trap | With Trap (production baseline) |
 |---|---|---|
-| Ethereum — first expressExecute() (~$1.3M) | Lost | Lost — single atomic tx |
-| Ethereum — any subsequent expressExecute() calls | Lost | $0 — bridge frozen at T+24s |
+| Ethereum — first expressExecute() (~$1.3M) | Lost | Lost — completes before snapFreeze (unavoidable trigger event) |
+| Ethereum — any subsequent expressExecute() attempts | Lost | $0 — router frozen |
 | Arbitrum (~$1.28M) | Lost | $0 if Arbitrum trap deployed; lost if not |
 | Remaining 7 chains (smaller amounts) | Lost | $0 per chain if trap deployed |
-| EYWA tokens (999M, ~illiquid) | Minted, unliquidatable | Same — already minted |
-| **Total preventable (cross-chain propagation)** | — | **~$1.28M+ (Arbitrum) + smaller chains** |
+| EYWA tokens (999M, illiquid) | Minted, unliquidatable | Same — already minted |
+| **Total preventable (Ethereum follow-on + Arbitrum with deployment)** | — | **~$1.28M+ (Arbitrum) + smaller chains** |
 
-**Honest assessment:** CrossCurve is the hardest case in this set for the damage
-prevention claim. Each chain's drain was a single atomic call. The trap fires on
-block N+1 — after that call is complete. The primary value here is: (1) preventing
-repeat calls on the same chain after the first drain, (2) enabling faster
-cross-chain alerts so manual intervention can stop other chains before they drain,
-and (3) speed — CrossCurve's manual pause took hours; the trap fires in 24 seconds.
+Each chain's drain is a single atomic call. The trap fires on that block, but the call completes before `snapFreeze()` executes. The containment value lies in preventing repeat calls on the same chain and blocking cross-chain propagation to chains where the trap is deployed before the attacker reaches them.
 
 ---
 
 ## 8. What the Trap Does Not Cover Here
 
-**Single-atomic-transaction drain per chain.** The first `expressExecute()` on
-each chain completes before the trap fires. No on-chain monitor prevents a
-well-crafted single-transaction exploit from completing its first execution.
+**Single-atomic-transaction drain per chain.** The first `expressExecute()` on each chain completes in one transaction. The trap fires on that block but the call is already confirmed. A reactive monitor cannot stop the transaction that produces its own trigger.
 
-**Multi-chain deployment requirement.** 9 chains affected. A single deployment
-catches only one. Full protection requires independent deployments per chain —
-a deployment scale problem, not a trap logic problem.
+**Multi-chain deployment requirement.** 9 chains affected. A single deployment catches only one. Full protection requires independent deployments per chain — each with its own `collect()` addresses, response contract, and operator set.
 
-**Day-zero vulnerability.** `expressExecute()` was callable from the contract's
-deployment. Any monitoring system is reactive; it fires after the first call,
-not before.
+**Day-zero vulnerability.** `expressExecute()` was callable from the contract's deployment. There is no on-chain precursor to detect — the first call and the exploit are the same event.
 
-**The root cause requires a code fix.** The correct fix is adding
-`require(gateway.validateContractCall(...))` before `_executePayload()`.
-A monitor does not substitute for proper input validation in the contract itself.
+**Root cause requires a code fix.** The correct mitigation is adding `require(gateway.validateContractCall(...))` before `_executePayload()`. The trap provides containment after first exploitation; it does not substitute for proper access control in the contract itself.
 
 ---
 
@@ -267,32 +215,27 @@ A monitor does not substitute for proper input validation in the contract itself
 
 **Within BridgeRouterGuard:**
 
-Vector 3 is the correct and sufficient vector. A production `collect()` monitoring
-CrossCurve would read `ReceiverAxelar.unauthorizedExecuteCount()` — a counter
-incremented each time `expressExecute()` is called without a prior
-`gateway.validateContractCall()` confirmation. This requires the ReceiverAxelar
-contract to expose this state.
+Vector 3 is correct and sufficient. A production `collect()` monitoring CrossCurve would read `ReceiverAxelar.executedMessages` and `ReceiverAxelar.gatewayValidatedMessages` as separate counters — requiring the protocol to expose these as readable state. The mock implementation demonstrates exactly this:
 
-**Beyond BridgeRouterGuard — a gateway approval correlation trap:**
+```solidity
+uint256 public executedMessages;
+uint256 public gatewayValidatedMessages;
 
-The ideal detection mechanism for this attack class is pre-execution, not
-post-execution. A gateway approval monitor could:
-- `collect()` reads `IAxelarGateway.isContractCallApproved()` for recent message
-  hashes targeting ReceiverAxelar
-- `shouldRespond()` fires if a ReceiverAxelar execution occurs for a commandId
-  with no corresponding gateway approval record
-- This correlates state from two contracts in the same `collect()` call —
-  architecturally viable within Drosera's view constraints
+function executeValidated(bytes32 payloadHash, bytes calldata) external view {
+    require(validatedPayloads[payloadHash], "Payload not validated by gateway");
+    // Both counters increment together in legitimate operation.
+}
 
-This would detect the gap between "gateway has not approved" and "execution about
-to happen" — potentially preventing even the first atomic drain on each chain.
-It is the strongest possible extension for this attack class and would represent
-a genuine pre-execution detection capability.
+function expressExecute(bytes calldata, bytes32) external {
+    executedMessages++;
+    // gatewayValidatedMessages unchanged — mismatch grows immediately.
+}
+```
+→ [`src/mocks/core/MockBridgeRouter.sol`](./src/mocks/core/MockBridgeRouter.sol)
 
-The Nomad 2022 parallel: a gateway approval monitor deployed on Nomad-style
-bridges would have fired before any of the 300+ copycat drains that followed the
-initial exploit. CrossCurve is a four-year repeat of a known vulnerability class.
-A trap watching for validation bypass is the systemic defense.
+**Beyond BridgeRouterGuard:**
+
+The ideal detection mechanism for this attack class would fire before the first execution. A gateway approval monitor reading `IAxelarGateway.isContractCallApproved()` for recent message hashes targeting `ReceiverAxelar` could detect the gap between unapproved gateway state and imminent execution — potentially enabling pre-execution containment. This extension addresses the atomic trigger constraint by shifting detection upstream to the validation layer itself.
 
 ---
 

@@ -63,7 +63,7 @@ contract DeployResponse is Script {
             response.setOperator(droseraExecutor, true);
             console.log("Drosera executor authorized:", droseraExecutor);
         } else {
-            console.log("[!] DROSERA_EXECUTOR not set — wire manually via setOperator");
+            console.log("[!] DROSERA_EXECUTOR not set - wire manually via setOperator");
         }
 
         vm.stopBroadcast();
