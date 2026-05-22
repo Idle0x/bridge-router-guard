@@ -128,7 +128,7 @@ if (newest.executedMessages > newest.gatewayValidatedMessages) {
 ```
 → [`src/core/BridgeRouterGuardTrap.sol`](../src/core/BridgeRouterGuardTrap.sol)
 
-**Multi-chain deployment reality:** This is a single-chain analysis. A single Ethereum deployment catches Ethereum's drain (~$1.3M trigger event + any follow-on attempts). The Arbitrum drain (~$1.28M) requires a separate Arbitrum deployment. Each chain fires independently within one block of the first unauthorized `expressExecute()` on that chain.
+**Multi-chain deployment reality:** This is a single-chain analysis. A single Ethereum deployment catches Ethereum's drain ($1.3M trigger event + any follow-on attempts). The Arbitrum drain (~$1.28M) requires a separate Arbitrum deployment. Each chain fires independently within one block of the first unauthorized `expressExecute()` on that chain.
 
 ---
 
@@ -247,21 +247,3 @@ The ideal detection mechanism for this attack class would fire before the first 
 - The Block: "CrossCurve Bridge Exploited for ~$3M Across Multiple Chains" — https://theblock.co/post/387939/crosscurve-bridge-exploited-for-approximately-3-million-across-multiple-chains
 - Decrypt: "CrossCurve Threatens Legal Action After $3M Bridge Exploit" — https://decrypt.co/356599/crosscurve-legal-action-3m-cross-chain-bridge-exploit
 - DEV.to: "The CrossCurve $3M Bridge Exploit: How One Missing Check Let Attackers Forge Cross-Chain Messages" — https://dev.to/ohmygod/the-crosscurve-3m-bridge-exploit-how-one-missing-check-let-attackers-forge-cross-chain-messages-516m
-
----
-
-```bash
-rm case-studies/005-crosscurve-feb-2026.md
-```
-
-```bash
-nano case-studies/005-crosscurve-feb-2026.md
-```
-
-```bash
-git commit -m "docs(case-studies): standardize 005-crosscurve to v3 forensic template" \
--m "- Align CrossCurve Feb 2026 analysis with v3 accounting-mismatch architecture and standardized section structure" \
--m "- Correct relative paths to ../src/ for mock and trap contract references" \
--m "- Enforce declarative tone, explicit vector mapping, and operator-latency framing consistent with 001-004 and 006-010" \
--m "- Document Vector 3 hard-invariant behavior, multi-chain deployment constraints, and atomic trigger limitations"
-```
